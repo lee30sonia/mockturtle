@@ -38,6 +38,7 @@
 #include "../views/depth_view.hpp"
 #include "../views/fanout_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/operators.hpp>
@@ -103,6 +104,9 @@ struct simresub_stats
 
   /* time for divisor collection */
   stopwatch<>::duration time_divs{0};
+
+  /* time for ODC computation */
+  stopwatch<>::duration time_odc{0};
 
   /* time for checking implications (containment) */
   stopwatch<>::duration time_collect_unate_divisors{0};
@@ -292,9 +296,11 @@ public:
   };
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
-    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
+    : ntkbase( ntkbase ), ntk( ntk ), POs( ntk.num_pos() ), ps( ps ), st( st ),
       tts( ntkbase ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
+    ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
+
     st.initial_size = ntk.num_gates(); 
 
     auto const update_level_of_new_node = [&]( const auto& n ){
@@ -369,6 +375,7 @@ public:
           });
         /* re-simulate */
         call_with_stopwatch( st.time_sim, [&]() {
+            tts.reset(); ////////////// ?
             simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
             normalizeTT();
           });
@@ -564,6 +571,7 @@ private:
 
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
+            tts.reset();
             simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
           });
         }
@@ -607,6 +615,11 @@ private:
 
     if ( !div_comp_success )
       return std::nullopt;
+
+    /* compute ODC */
+    auto odc = call_with_stopwatch( st.time_odc, [&]() { 
+        return observability_dont_cares_without_window( ntkbase, ntk, root, sim, tts, POs );
+      });
 
     /* update statistics */
     st.num_total_divisors += num_divs;
@@ -697,6 +710,7 @@ private:
 
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
+            tts.reset();
             simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
             normalizeTT();
           });
@@ -792,6 +806,7 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
+              tts.reset();
               simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
               normalizeTT();
             });
@@ -858,6 +873,7 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
+              tts.reset();
               simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
               normalizeTT();
             });
@@ -884,6 +900,7 @@ private:
 private:
   NtkBase& ntkbase;
   Ntk& ntk;
+  std::vector<node> POs;
 
   simresub_params const& ps;
   simresub_stats& st;
