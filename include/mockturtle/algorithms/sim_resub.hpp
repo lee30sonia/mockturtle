@@ -300,8 +300,6 @@ public:
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
       tts( ntk ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
-    ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
-
     st.initial_size = ntk.num_gates(); 
 
     auto const update_level_of_new_node = [&]( const auto& n ){
@@ -622,7 +620,9 @@ private:
 
     /* compute ODC */
     auto odc = call_with_stopwatch( st.time_odc, [&]() { 
-        return observability_dont_cares_without_window( ntkbase, ntk, root, sim, tts, POs );
+        std::vector<node> POs( ntk.num_pos() );
+        ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
+        return observability_dont_cares_without_window<Ntk>( ntk, root, sim, tts, POs );
       });
 
     /* update statistics */
@@ -901,7 +901,6 @@ private:
 private:
   NtkBase& ntkbase;
   Ntk& ntk;
-  std::vector<node> POs;
 
   simresub_params const& ps;
   simresub_stats& st;
