@@ -41,6 +41,7 @@
 #include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
+#include <kitty/partial_truth_table.hpp>
 #include <kitty/operators.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
@@ -259,7 +260,7 @@ class simresub_impl
 public:
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
-  using TT = unordered_node_map<kitty::dynamic_truth_table, NtkBase>;
+  using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
 
   struct unate_divisors
   {
@@ -296,8 +297,8 @@ public:
   };
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
-    : ntkbase( ntkbase ), ntk( ntk ), POs( ntk.num_pos() ), ps( ps ), st( st ),
-      tts( ntkbase ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
+    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
+      tts( ntk ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
     ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
 
@@ -309,12 +310,14 @@ public:
     };
     
     auto const update_level_of_existing_node = [&]( node const& n, const auto& old_children ){
+      //std::cout<<unsigned(n)<<" is modified"<<std::endl;
       (void)old_children;
       update_node_level( n );
     };
     
     auto const update_level_of_deleted_node = [&]( const auto& n ){
       /* update fanout */
+      //std::cout<<unsigned(n)<<" is deleted"<<std::endl;
       ntk.set_level( n, -1 );
     };
     
@@ -372,11 +375,11 @@ public:
         /* update network */
         call_with_stopwatch( st.time_substitute, [&]() {
             ntk.substitute_node( n, *g );
+            //std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(*g))<<std::endl;
           });
         /* re-simulate */
         call_with_stopwatch( st.time_sim, [&]() {
-            tts.reset(); ////////////// ?
-            simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+            simulate_nodes<Ntk>( ntk, tts, sim );
             normalizeTT();
           });
         return true; /* next */
@@ -539,15 +542,16 @@ private:
   void simulate_generate()
   {
     call_with_stopwatch( st.time_sim, [&]() {
-      simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+      simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
     std::vector<pabc::lit> assumptions( 1 );
-    kitty::dynamic_truth_table zero = sim.compute_constant(false);
+    kitty::partial_truth_table zero = sim.compute_constant(false);
     //unordered_node_map<bool, NtkBase> constant_gates( ntkbase ); /* for checking completeness */
   
     ntk.foreach_gate( [&]( auto const& n ) 
     {
+      //std::cout<<"processing node "<<unsigned(n)<<std::endl;
       if ( (tts[n] == zero) || (tts[n] == ~zero) )
       {
         assumptions[0] = lit_not_cond( literals[n], (tts[n] == ~zero) );
@@ -558,7 +562,7 @@ private:
         
         if ( res == percy::synth_result::success )
         {
-          //std::cout << "SAT: add pattern. ";
+          //std::cout << "SAT: add pattern. (" << n << ")" << std::endl;
           std::vector<bool> pattern;
           for ( auto i = 1u; i <= ntk.num_pis(); ++i )
             pattern.push_back(solver.var_value( i ));
@@ -571,8 +575,8 @@ private:
 
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
-            tts.reset();
-            simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+            simulate_nodes<Ntk>( ntk, tts, sim );
+            zero = sim.compute_constant(false);
           });
         }
         else
@@ -676,7 +680,7 @@ private:
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
   {
     (void)required;
-    auto const tt = tts[root];
+    auto const& tt = tts[root];
 
     //for ( auto i = 0u; i < num_divs; ++i )
     for ( int i = num_divs-1; i >= 0; --i )
@@ -710,8 +714,7 @@ private:
 
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
-            tts.reset();
-            simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+            simulate_nodes<Ntk>( ntk, tts, sim );
             normalizeTT();
           });
         }
@@ -806,8 +809,7 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-              tts.reset();
-              simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+              simulate_nodes<Ntk>( ntk, tts, sim );
               normalizeTT();
             });
           }
@@ -873,8 +875,7 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-              tts.reset();
-              simulate_nodes<kitty::dynamic_truth_table, NtkBase, partial_simulator>( ntk, tts, sim );
+              simulate_nodes<Ntk>( ntk, tts, sim );
               normalizeTT();
             });
           }
@@ -913,7 +914,7 @@ private:
 
   TT tts;
   node_map<bool, NtkBase> phase;
-  partial_simulator sim;
+  partial_simulator<kitty::partial_truth_table> sim;
   node_map<uint32_t, NtkBase> literals;
   percy::bsat_wrapper solver;
 
