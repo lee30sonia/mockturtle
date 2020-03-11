@@ -624,7 +624,8 @@ private:
         ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
         return observability_dont_cares_without_window<Ntk>( ntk, root, sim, tts, POs );
       });
-
+    odc.print();
+    
     /* update statistics */
     st.num_total_divisors += num_divs;
 
