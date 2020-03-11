@@ -624,7 +624,17 @@ private:
         ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
         return observability_dont_cares_without_window<Ntk>( ntk, root, sim, tts, POs );
       });
-    odc.print();
+    std::cout<<"odc of node "<<unsigned(root)<<" "; odc.print();
+    if ( odc == sim.compute_constant( true ) ) /* all patterns are not observable */
+    {
+      //solver.add_var();
+      //auto nlit = make_lit( solver.nr_vars()-1 );
+      //solver.add_clause( {literals[root], literals[d], nlit} );
+      //solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
+      //solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
+      //solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
+      //std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, phase[root] == phase[d] ) );
+    }
     
     /* update statistics */
     st.num_total_divisors += num_divs;

@@ -129,16 +129,16 @@ kitty::dynamic_truth_table observability_dont_cares( Ntk const& ntk, node<Ntk> c
 namespace detail {
 
 template<class Ntk>
-void clearTFO_rec( Ntk const& fanout_ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& ttsNOT, node<Ntk> const& n )
+void clearTFO_rec( Ntk const& ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& ttsNOT, node<Ntk> const& n )
 {
-  if ( fanout_ntk.visited( n ) == fanout_ntk.trav_id() ) /* visited */
+  if ( ntk.visited( n ) == ntk.trav_id() ) /* visited */
     return;
-  fanout_ntk.set_visited( n, fanout_ntk.trav_id() );
+  ntk.set_visited( n, ntk.trav_id() );
 
   ttsNOT.erase( n );
 
-  fanout_ntk.foreach_fanout( n, [&]( auto const& fo ){
-    clearTFO_rec( fanout_ntk, ttsNOT, fo );   
+  ntk.foreach_fanout( n, [&]( auto const& fo ){
+    clearTFO_rec( ntk, ttsNOT, fo );   
   });
 }
 
@@ -147,20 +147,21 @@ void clearTFO_rec( Ntk const& fanout_ntk, unordered_node_map<kitty::partial_trut
 /* Compute the don't care input patterns in the partial simulator `sim` of node `n` with respect to `roots`
 such that under these PI patterns the value of n doesn't affect outputs of roots. */
 template<class Ntk>
-kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& fanout_ntk, node<Ntk> const& n, partial_simulator<kitty::partial_truth_table> const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
+kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& ntk, node<Ntk> const& n, partial_simulator<kitty::partial_truth_table> const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
 {
-  fanout_ntk.incr_trav_id();
+  ntk.incr_trav_id();
 
   unordered_node_map<kitty::partial_truth_table, Ntk> ttsNOT = tts.copy(); // same as tts except for TFOs
 
-  detail::clearTFO_rec( fanout_ntk, ttsNOT, n );
+  detail::clearTFO_rec( ntk, ttsNOT, n );
   ttsNOT[n] = ~tts[n];
-  simulate_nodes( fanout_ntk, ttsNOT, sim );
+  simulate_nodes( ntk, ttsNOT, sim );
 
   kitty::partial_truth_table care( tts[n].num_bits() );
   for ( const auto& r : roots )
   {
     care |= tts[r] ^ ttsNOT[r];
+    //if (n==447) { tts[r].print();  ttsNOT[r].print(); std::cout<<std::endl; }
   }
   return ~care;
 }
