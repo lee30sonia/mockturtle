@@ -40,12 +40,12 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "size_after", "#pat aug", "#cex", "#const", "#div0", "#div1", "total time", "sim time", "SAT time", "sub. time", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "size_after", "#pat aug", "#cex", "#const", "#div0", "#div1", "total time", "sim time", "SAT time", "odc time", "equivalent" );
 
   for ( auto const& benchmark : epfl_benchmarks() )
   {
-    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    //if ( benchmark != "voter" ) continue;
+    //if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
+    if ( benchmark != "adder" ) continue;
 
     //fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -69,7 +69,7 @@ int main()
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
     //std::cout << "num_total_divisors = " << st.num_total_divisors << std::endl;
-    exp( benchmark, aig.num_pis(), orig.num_gates(), aig.num_gates(), st.num_generated_patterns, st.num_cex, st.num_constant, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_substitute ), cec );
+    exp( benchmark, aig.num_pis(), orig.num_gates(), aig.num_gates(), st.num_generated_patterns, st.num_cex, st.num_constant, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_odc ), cec );
   }
 
   exp.save();
