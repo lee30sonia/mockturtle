@@ -128,8 +128,8 @@ kitty::dynamic_truth_table observability_dont_cares( Ntk const& ntk, node<Ntk> c
 
 namespace detail {
 
-template<class Ntk>
-void clearTFO_rec( Ntk const& ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& ttsNOT, node<Ntk> const& n )
+template<class Ntk, class TT>
+void clearTFO_rec( Ntk const& ntk, unordered_node_map<TT, Ntk>& ttsNOT, node<Ntk> const& n )
 {
   if ( ntk.visited( n ) == ntk.trav_id() ) /* visited */
     return;
@@ -161,9 +161,32 @@ kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& n
   for ( const auto& r : roots )
   {
     care |= tts[r] ^ ttsNOT[r];
-    //if (n==447) { tts[r].print();  ttsNOT[r].print(); std::cout<<std::endl; }
   }
   return ~care;
+}
+
+/* Check if node `n` is observable with respect to `roots`
+such that under input assignment `pattern` the value of `n` doesn't affect outputs of `roots`. 
+Returns true if is observable. (at least one PO is affected) */
+template<class Ntk>
+bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool> const& pattern, std::vector<node<Ntk>> const& roots )
+{
+  default_simulator<bool> sim(pattern);
+  unordered_node_map<bool, Ntk> tts(ntk);
+  simulate_nodes( ntk, tts, sim );
+  unordered_node_map<bool, Ntk> ttsNOT = tts.copy(); // same as tts except for TFOs
+
+  ntk.incr_trav_id();
+  detail::clearTFO_rec( ntk, ttsNOT, n );
+  ttsNOT[n] = ~tts[n];
+  simulate_nodes( ntk, ttsNOT, sim );
+
+  bool care = false;
+  for ( const auto& r : roots )
+  {
+    care |= tts[r] ^ ttsNOT[r];
+  }
+  return care;
 }
 
 /*! \brief SAT-based satisfiability don't cares checker
