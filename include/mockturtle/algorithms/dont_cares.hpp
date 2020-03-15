@@ -173,8 +173,10 @@ bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool
 {
   default_simulator<bool> sim(pattern);
   unordered_node_map<bool, Ntk> tts(ntk);
+  unordered_node_map<bool, Ntk> ttsNOT(ntk);
   simulate_nodes( ntk, tts, sim );
-  unordered_node_map<bool, Ntk> ttsNOT = tts.copy(); // same as tts except for TFOs
+  simulate_nodes( ntk, ttsNOT, sim ); // copying doesn't work for unordered_node_map<bool, Ntk>, not sure why
+  //ttsNOT = tts.copy(); // same as tts except for TFOs
 
   ntk.incr_trav_id();
   detail::clearTFO_rec( ntk, ttsNOT, n );
@@ -184,6 +186,7 @@ bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool
   bool care = false;
   for ( const auto& r : roots )
   {
+    //std::cout<< "in pattern_is_observable check: " <<tts[r] << " " << ttsNOT[r]<<std::endl;
     care |= tts[r] ^ ttsNOT[r];
   }
   return care;

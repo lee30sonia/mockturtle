@@ -81,6 +81,8 @@ struct simresub_params
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
   uint32_t max_pis{8};
 
+  uint32_t ODC_failure_limit{100};
+
   std::default_random_engine::result_type random_seed{0};
 };
 
@@ -297,7 +299,7 @@ public:
   };
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
-    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
+    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), 
       tts( ntk ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
@@ -340,6 +342,7 @@ public:
     call_with_stopwatch( st.time_simgen, [&]() {
       simulate_generate();
     });
+    //return;
 
     std::vector<node> PIs( ntk.num_pis() );
     ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
@@ -537,6 +540,88 @@ private:
     return true;
   }
 
+  /* `me` is one of `fo`'s fanin, get the other one. assuming 2-input gates */
+  signal get_other_fanin( node const& fo, node const& me )
+  {
+    signal ret;
+    ntk.foreach_fanin( fo, [&]( auto const& foi ){
+      if ( ntk.get_node( foi ) != me )
+      {
+        ret = foi;
+        return false;
+      }
+      return true;
+    });
+    return ret;
+  }
+
+  void DFS( node const& n_ori, node const& n, std::vector<bool>& pattern, std::vector<pabc::lit>& assumptions, bool& fReturn, uint32_t& nFail )
+  {
+    //std::cout<<"DFS: node "<<unsigned(n)<<" has values "<< bits[n]<< " and "<< bitsInv[n]<<std::endl;
+    ntk.foreach_fanout( n, [&]( auto const& fo ){
+      if ( fReturn ) /* whether we have gotten an observable pattern */
+        return false; /* terminate foreach_fanout, also terminating recursive DFS */
+
+      bool fEnd = false; /* whether has reached the end of a path */
+      //std::cout<<"fanout "<<unsigned(fo)<<" has values "<<bits[fo]<<" and "<<bitsInv[fo]<<std::endl;
+      ntk.foreach_po( [&]( auto const& f ){ 
+        if ( ntk.get_node(f) == fo ) /* DFS reached one of POs */
+        {
+          //std::cout<<"reach PO "<<unsigned(ntk.get_node(f))<<" try solving with "<<assumptions.size()<<" assumptions"<<std::endl;
+          const auto res = call_with_stopwatch( st.time_sat, [&]() {
+            return solver.solve( &assumptions[0], &assumptions[0] + assumptions.size(), 0 );
+          });
+          if ( res == percy::synth_result::success )
+          {
+            for ( auto i = 1u; i <= ntk.num_pis(); ++i )
+              pattern[i-1] = (solver.var_value( i ));
+            fReturn = call_with_stopwatch( st.time_odc, [&]() { 
+              return pattern_is_observable( ntk, n_ori, pattern, POs );
+            });
+            std::cout<<"SAT, now observable? "<<fReturn<<std::endl;
+          }
+          if ( !fReturn ) /* UNSAT or SAT but still not observable */
+          {
+            if ( ++nFail >= ps.ODC_failure_limit )
+            {
+              std::cout<<"conflict limit reached!"<<std::endl;
+              fReturn = true;
+            }
+          }
+
+          fEnd = true;
+          return false; /* terminate foreach_po */
+        }
+        return true; /* check the next PO */
+      });
+
+      if ( !fEnd )
+      {
+        /* add assumption if the other fanin of this node is controlling value */
+        auto foi = get_other_fanin( fo, n );
+        //std::cout<<"add assumption for fanout "<<unsigned(fo)<<std::endl; //<<", the other fanin is "<<unsigned(ntk.get_node(foi))<<", who has values "<<( bits[ntk.get_node(foi)] ^ ntk.is_complemented(foi) )<<" and "<<( bitsInv[ntk.get_node(foi)] ^ ntk.is_complemented(foi) )<<std::endl;
+        //if ( !( bits[ntk.get_node(foi)] ^ ntk.is_complemented(foi) ) && !( bitsInv[ntk.get_node(foi)] ^ ntk.is_complemented(foi) ) )
+        assumptions.emplace_back( lit_not_cond( literals[ntk.get_node(foi)], ntk.is_complemented(foi) ) );
+        
+        DFS( n_ori, fo, pattern, assumptions, fReturn, nFail );
+        //std::cout<<"pop assumption for fanout "<<unsigned(fo)<<std::endl;
+        assumptions.pop_back();
+      }
+
+      return true; /* try next fanout (another path) */
+    });   
+  }
+
+  void generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern )
+  {
+    std::vector<pabc::lit> assumptions( 1 );
+    assumptions[0] = lit_not_cond( literals[n], ~value );
+
+    bool fReturn = false; /* whether we have gotten an observable pattern */
+    uint32_t nFail = 0; /* number of failed paths */
+    DFS( n, n, pattern, assumptions, fReturn, nFail );
+  }
+
   void simulate_generate()
   {
     call_with_stopwatch( st.time_sim, [&]() {
@@ -552,7 +637,8 @@ private:
       //std::cout<<"processing node "<<unsigned(n)<<std::endl;
       if ( (tts[n] == zero) || (tts[n] == ~zero) )
       {
-        assumptions[0] = lit_not_cond( literals[n], (tts[n] == ~zero) );
+        bool value = (tts[n] == zero); /* wanted value of n */
+        assumptions[0] = lit_not_cond( literals[n], ~value );
       
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
@@ -564,6 +650,19 @@ private:
           std::vector<bool> pattern;
           for ( auto i = 1u; i <= ntk.num_pis(); ++i )
             pattern.push_back(solver.var_value( i ));
+
+          /* check if the found pattern is observable */ 
+          ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
+          bool observable = call_with_stopwatch( st.time_odc, [&]() { 
+              return pattern_is_observable( ntk, n, pattern, POs );
+            });
+          if ( !observable )
+          {
+            std::cout << "generated pattern is not observable! " << unsigned(n) << std::endl;
+            generate_observable_pattern( n, value, pattern );
+            //std::cout<< pattern_is_observable( ntk, n, pattern, POs ) <<std::endl;
+          }
+
           if ( sim.add_pattern(pattern) )
           {
             fStop = true;
@@ -586,7 +685,32 @@ private:
           call_with_stopwatch( st.time_substitute, [&]() {
             ntk.substitute_node( n, g );
           });
+          return true; /* next gate */
+        }
+      }
+      else
+      {
+        /* compute ODC */
+        auto odc = call_with_stopwatch( st.time_odc, [&]() { 
+            return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs );
+          });
 
+        /* check if under non-ODCs n is always the same value */ 
+        if ( ( tts[n] & ~odc ) == sim.compute_constant( false ) )
+        {
+          std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 0!" << std::endl;
+          std::vector<bool> pattern(ntk.num_pis());
+          generate_observable_pattern( n, true, pattern );
+          sim.add_pattern(pattern);
+          ++st.num_generated_patterns;
+        }
+        else if ( ( tts[n] | odc ) == sim.compute_constant( true ) )
+        {
+          std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 1!" << std::endl;
+          std::vector<bool> pattern(ntk.num_pis());
+          generate_observable_pattern( n, false, pattern );
+          sim.add_pattern(pattern);
+          ++st.num_generated_patterns;
         }
       }
 
@@ -617,24 +741,6 @@ private:
 
     if ( !div_comp_success )
       return std::nullopt;
-
-    /* compute ODC */
-    auto odc = call_with_stopwatch( st.time_odc, [&]() { 
-        std::vector<node> POs( ntk.num_pos() );
-        ntk.foreach_po( [&]( auto const& n, auto i ){ POs.at(i) = ntk.get_node( n ); });
-        return observability_dont_cares_without_window<Ntk>( ntk, root, sim, tts, POs );
-      });
-    std::cout<<"odc of node "<<unsigned(root)<<" "; odc.print();
-    if ( odc == sim.compute_constant( true ) ) /* all patterns are not observable */
-    {
-      //solver.add_var();
-      //auto nlit = make_lit( solver.nr_vars()-1 );
-      //solver.add_clause( {literals[root], literals[d], nlit} );
-      //solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
-      //solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
-      //solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
-      //std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, phase[root] == phase[d] ) );
-    }
     
     /* update statistics */
     st.num_total_divisors += num_divs;
@@ -915,6 +1021,8 @@ private:
 
   simresub_params const& ps;
   simresub_stats& st;
+
+  std::vector<node> POs;
 
   /* temporary statistics for progress bar */
   uint32_t candidates{0};
