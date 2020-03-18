@@ -180,13 +180,13 @@ bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool
 
   ntk.incr_trav_id();
   detail::clearTFO_rec( ntk, ttsNOT, n );
-  ttsNOT[n] = ~tts[n];
+  ttsNOT[n] = !tts[n];
   simulate_nodes( ntk, ttsNOT, sim );
 
   bool care = false;
   for ( const auto& r : roots )
   {
-    //std::cout<< "in pattern_is_observable check: " <<tts[r] << " " << ttsNOT[r]<<std::endl;
+    //if (r==3849) std::cout<< "in pattern_is_observable check: " <<tts[r] << " " << ttsNOT[r]<<std::endl;
     care |= tts[r] ^ ttsNOT[r];
   }
   return care;
