@@ -59,6 +59,13 @@ namespace percy
             return pabc::bmcg_sat_solver_addclause(solver, begin, end - begin);
         }
 
+        /* mockturtle style clause */
+        int add_clause(std::vector<uint32_t> const& clause)
+        {
+            auto lits = (int*)(const_cast<uint32_t*>(clause.data()));
+            return pabc::bmcg_sat_solver_addclause(solver, lits, clause.size());
+        }
+
         void add_var()
         {
             pabc::bmcg_sat_solver_addvar(solver);
