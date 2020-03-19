@@ -294,7 +294,7 @@ public:
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
-      tts( ntk ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
+      tts( ntk ), phase( ntkbase ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
 
@@ -653,20 +653,21 @@ private:
 
   void normalizeTT()
   {
-    phase.resize();
     ntk.foreach_gate( [&]( auto const& n ){
       if ( kitty::get_bit( tts[n], 0 ) )
       {
         phase[n] = true;
         tts[n] = ~tts[n];
       }
+      else
+        phase[n] = false;
     });
   }
 
   void un_normalizeTT()
   {
     ntk.foreach_gate( [&]( auto const& n ){
-      if ( phase[n] )
+      if ( phase.has(n) && phase[n] )
       {
         tts[n] = ~tts[n];
       }
@@ -895,7 +896,7 @@ private:
   uint32_t last_gain{0};
 
   TT tts;
-  node_map<bool, NtkBase> phase;
+  unordered_node_map<bool, NtkBase> phase;
   partial_simulator<kitty::partial_truth_table> sim;
   node_map<uint32_t, NtkBase> literals;
   percy::bsat_wrapper solver;
