@@ -302,12 +302,6 @@ private:
     ntk_.events().on_delete.push_back( [this]( auto const& n ) { on_delete( n ); } );
   }
 
-  void on_modified( node const& n )
-  {
-    on_delete( n );
-    on_add( n );
-  }
-
   void on_add( node const& n, bool add_var = true )
   {
     uint32_t node_lit;
@@ -401,6 +395,14 @@ private:
     }
 
     detail::on_function( node_lit, child_lits, ntk_.node_function( n ), _add_clause );
+  }
+
+  void on_modified( node const& n )
+  {
+    on_delete( n );
+    on_add( n, false ); 
+    /* reuse literals_[n] (so that the fanout clauses are still valid),
+    but create a new switches_[n] to control a new set of gate clauses */
   }
 
   void on_delete( node const& n )
