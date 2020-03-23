@@ -795,20 +795,21 @@ private:
 
   void normalizeTT()
   {
-    phase.resize();
     ntk.foreach_gate( [&]( auto const& n ){
       if ( kitty::get_bit( tts[n], 0 ) )
       {
         phase[n] = true;
         tts[n] = ~tts[n];
       }
+      else
+        phase[n] = false;
     });
   }
 
   void un_normalizeTT()
   {
     ntk.foreach_gate( [&]( auto const& n ){
-      if ( phase[n] )
+      if ( phase.has(n) && phase[n] )
       {
         tts[n] = ~tts[n];
       }
@@ -919,9 +920,6 @@ private:
           solver.add_var();
           auto nlit = make_lit( solver.nr_vars()-1 );
           solver.add_clause( {l_r, l_s0, l_s1, nlit} );
-          solver.add_clause( {l_r, lit_not( l_s0 ), lit_not( nlit )} );
-          solver.add_clause( {l_r, lit_not( l_s1 ), lit_not( nlit )} );
-          solver.add_clause( {lit_not( l_r ), l_s0, l_s1, lit_not( nlit )} );
           solver.add_clause( {lit_not( l_r ), lit_not( l_s0 ), nlit} );
           solver.add_clause( {lit_not( l_r ), lit_not( l_s1 ), nlit} );
           std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
@@ -952,10 +950,11 @@ private:
             /* update CNF */
             literals.resize();
             solver.add_var();
-            literals[g] = make_lit( solver.nr_vars()-1 );
-            solver.add_clause( {lit_not( l_s0 ), literals[g]} );
-            solver.add_clause( {lit_not( l_s1 ), literals[g]} );
-            solver.add_clause( {l_s0, l_s1, lit_not( literals[g] )} );
+            literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
+            auto l_g = lit_not_cond( literals[ntk.get_node(g)], phase[root] );
+            solver.add_clause( {lit_not( l_s0 ), l_g} );
+            solver.add_clause( {lit_not( l_s1 ), l_g} );
+            solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
             return g;
           }
         }
@@ -984,16 +983,13 @@ private:
           auto nlit = make_lit( solver.nr_vars()-1 );
           solver.add_clause( {l_r, l_s0, nlit} );
           solver.add_clause( {l_r, l_s1, nlit} );
-          solver.add_clause( {l_r, lit_not( l_s0 ), lit_not( l_s1 ), lit_not( nlit )} );
-          solver.add_clause( {lit_not( l_r ), l_s0, lit_not( nlit )} );
-          solver.add_clause( {lit_not( l_r ), l_s1, lit_not( nlit )} );
           solver.add_clause( {lit_not( l_r ), lit_not( l_s0 ), lit_not( l_s1 ), nlit} );
           std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
         
           const auto res = call_with_stopwatch( st.time_sat, [&]() {
             return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
           });
-          
+
           if ( res == percy::synth_result::success ) /* CEX found */
           {
             std::vector<bool> pattern;
@@ -1011,14 +1007,16 @@ private:
           }
           else /* proved substitution */
           {
+            //std::cout<<"found substitution "<<(phase[root]?"~":"")<< unsigned(root)<<" = "<<(phase[s0]?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(phase[s1]?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
             auto g = phase[root]? !ntk.create_and( phase[s0]? !s0: s0, phase[s1]? !s1: s1 ) :ntk.create_and( phase[s0]? !s0: s0, phase[s1]? !s1: s1 );
             /* update CNF */
             literals.resize();
             solver.add_var();
-            literals[g] = make_lit( solver.nr_vars()-1 );
-            solver.add_clause( {lit_not( literals[g] ), l_s0} );
-            solver.add_clause( {lit_not( literals[g] ), l_s1} );
-            solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), literals[g]} );
+            literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
+            auto l_g = lit_not_cond( literals[ntk.get_node(g)], phase[root] );
+            solver.add_clause( {lit_not( l_g ), l_s0} );
+            solver.add_clause( {lit_not( l_g ), l_s1} );
+            solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
             return g;
           }
         }
@@ -1042,7 +1040,7 @@ private:
   uint32_t last_gain{0};
 
   TT tts;
-  node_map<bool, NtkBase> phase;
+  unordered_node_map<bool, NtkBase> phase;
   partial_simulator<kitty::partial_truth_table> sim;
   node_map<uint32_t, NtkBase> literals;
   percy::bsat_wrapper solver;
