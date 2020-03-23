@@ -295,13 +295,17 @@ private:
   void register_events()
   {
     ntk_.events().on_add.push_back( [this]( auto const& n ) { on_add( n ); } );
-    //ntk_.events().on_modified.push_back( []( auto const& n, auto const& previous ) {
-    //  (void)n;
-    //  (void)previous;
-    //  assert( false && "nodes should not be modified in cnf_view" );
-    //  std::abort();
-    //} );
+    ntk_.events().on_modified.push_back( [this]( auto const& n, auto const& previous ) {
+      (void)previous; 
+      on_modified( n ); 
+    } );
     ntk_.events().on_delete.push_back( [this]( auto const& n ) { on_delete( n ); } );
+  }
+
+  void on_modified( node const& n )
+  {
+    on_delete( n );
+    on_add( n );
   }
 
   void on_add( node const& n, bool add_var = true )
