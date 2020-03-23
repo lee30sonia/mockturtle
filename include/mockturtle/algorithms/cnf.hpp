@@ -51,6 +51,11 @@ inline constexpr uint32_t make_lit( uint32_t var, bool is_complemented = false )
   return ( var << 1 ) | ( is_complemented ? 1 : 0 );
 }
 
+inline constexpr uint32_t lit2var( uint32_t lit )
+{
+  return ( lit >> 1 );
+}
+
 inline constexpr uint32_t lit_not( uint32_t lit )
 {
   return lit ^ 0x1;
