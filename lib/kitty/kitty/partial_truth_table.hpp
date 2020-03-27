@@ -35,6 +35,8 @@
 #include <cstdint>
 #include <type_traits>
 #include <vector>
+#include <iostream>
+#include <iomanip>
 
 #include "detail/constants.hpp"
 #include "traits.hpp"
