@@ -300,7 +300,7 @@ public:
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), 
-      tts( ntk ), phase( ntkbase, false ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
+      tts( ntk ), phase( ntkbase ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
 

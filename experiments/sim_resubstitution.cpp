@@ -44,8 +44,8 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks() )
   {
-    //if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    if ( benchmark != "ctrl" ) continue;
+    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
+    //if ( benchmark != "ctrl" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
