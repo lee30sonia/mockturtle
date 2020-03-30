@@ -302,7 +302,7 @@ public:
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), 
-      tts( ntk ), phase( ntkbase ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed ), literals( node_literals( ntkbase ) )
+      tts( ntk ), phase( ntkbase ), sim( ntk.num_pis(), ps.num_pattern_base, ps.num_reserved_blocks, ps.random_seed )
   {
     st.initial_size = ntk.num_gates(); 
 
@@ -554,7 +554,7 @@ private:
     });
     return ret;
   }
-
+#if 0
   void DFS( node const& n_ori, node const& n, std::vector<bool>& pattern, std::vector<pabc::lit>& assumptions, bool& fReturn, uint32_t& nFail )
   {
     //std::cout<<"DFS: node "<<unsigned(n)<<std::endl;
@@ -621,6 +621,54 @@ private:
     DFS( n, n, pattern, assumptions, fReturn, nFail );
     return fReturn;
   }
+#endif
+  bool generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern, unordered_node_map<bool, Ntk> const& po_vals )
+  {
+    //std::cout<<"generating pattern for n to be "<<value<<" and observable.\n";
+    ntk.deactivate( n );
+
+    std::vector<bill::lit_type> assumptions;
+    if ( value )
+    {
+      ntk.foreach_fanin( n, [&]( auto const& f ){
+        assumptions.emplace_back( ntk.lit( f ) );
+        return true;
+      });
+    }
+    else
+    {
+      std::vector<bill::lit_type> clause;
+      auto nlit = bill::lit_type( ntk.add_var(), bill::lit_type::polarities::positive );
+      ntk.foreach_fanin( n, [&]( auto const& f ){
+        clause.emplace_back( ~( ntk.lit( f ) ) );
+        return true;
+      });
+      clause.emplace_back( nlit );
+      ntk.add_clause( clause );
+      assumptions.emplace_back( ~nlit );
+    }
+    assumptions.emplace_back( value? ~( ntk.lit( n ) ): ntk.lit( n ) );
+    ntk.foreach_po( [&]( auto const& f ){ 
+      assumptions.emplace_back( po_vals[f] ? ~( ntk.lit( f ) ): ntk.lit( f ) );
+      return false; /* only try for the first PO now */
+    });
+
+    const auto res = call_with_stopwatch( st.time_sat, [&]() {
+      return ntk.solve( assumptions );
+    });
+
+    if ( res )
+    {
+      std::cout<<"generation "<< ((*res)? "SAT": "UNSAT");// <<"\n";
+      if ( *res )
+        pattern = ntk.pi_model_values();
+      ntk.activate( n );
+      return *res;
+    }
+
+    ntk.activate( n );
+    return false;
+  }
 
   void simulate_generate()
   {
@@ -650,18 +698,21 @@ private:
           {
             //std::cout << "SAT: add pattern. (" << n << ")" << std::endl;
             std::vector<bool> pattern = ntk.pi_model_values();
-//#if 0
+#if 0
             /* check if the found pattern is observable */ 
             ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
+            unordered_node_map<bool, Ntk> po_vals( ntk );
             bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-                return pattern_is_observable( ntk, n, pattern, POs );
+                return pattern_is_observable( ntk, n, pattern, POs, po_vals );
               });
             if ( !observable )
             {
               std::cout << "generated pattern is not observable! " << unsigned(n) << std::endl;
-              generate_observable_pattern( n, value, pattern );
+              generate_observable_pattern( n, value, pattern, po_vals );
+              unordered_node_map<bool, Ntk> po_vals2( ntk );
+              std::cout << "after re-gen, now? " << pattern_is_observable( ntk, n, pattern, POs, po_vals2 ) <<"\n";
             }
-//#endif
+#endif
             sim.add_pattern(pattern);
             ++st.num_generated_patterns;
   
@@ -684,9 +735,11 @@ private:
           }
         }
       }
+#if 0
       else
       {
         /* compute ODC */
+        ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
         auto odc = call_with_stopwatch( st.time_odc, [&]() { 
             return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs );
           });
@@ -696,7 +749,6 @@ private:
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 0!" << std::endl;
           std::vector<bool> pattern(ntk.num_pis());
-          ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
           if ( generate_observable_pattern( n, true, pattern ) )
           {
             sim.add_pattern(pattern);
@@ -713,7 +765,6 @@ private:
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 1!" << std::endl;
           std::vector<bool> pattern(ntk.num_pis());
-          ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
           if ( generate_observable_pattern( n, false, pattern ) )
           {
             sim.add_pattern(pattern);
@@ -726,7 +777,7 @@ private:
           }
         }
       }
-
+#endif
       return true; /* next gate */
     } );
 
