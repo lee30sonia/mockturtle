@@ -25,7 +25,7 @@
 
 /*!
   \file sim_resub.hpp
-  \brief Resubstitution
+  \brief Simulation-Guided Resubstitution
 
   \author Siang-Yun Lee
 */
