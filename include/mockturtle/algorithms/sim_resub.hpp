@@ -341,7 +341,7 @@ public:
     call_with_stopwatch( st.time_simgen, [&]() {
       simulate_generate();
     });
-    //return;
+    return;
 
     std::vector<node> PIs( ntk.num_pis() );
     ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
@@ -649,7 +649,7 @@ private:
     }
     assumptions.emplace_back( value? ~( ntk.lit( n ) ): ntk.lit( n ) );
     ntk.foreach_po( [&]( auto const& f ){ 
-      assumptions.emplace_back( po_vals[f] ? ~( ntk.lit( f ) ): ntk.lit( f ) );
+      assumptions.emplace_back( po_vals[f] ? ~( ntk.lit( ntk.get_node(f) ) ): ntk.lit( ntk.get_node(f) ) );
       return false; /* only try for the first PO now */
     });
 
@@ -659,7 +659,7 @@ private:
 
     if ( res )
     {
-      std::cout<<"generation "<< ((*res)? "SAT": "UNSAT");// <<"\n";
+      std::cout<<"generation "<< ((*res)? "SAT": "UNSAT") ;//<<"\n";
       if ( *res )
         pattern = ntk.pi_model_values();
       ntk.activate( n );
@@ -707,10 +707,10 @@ private:
               });
             if ( !observable )
             {
-              std::cout << "generated pattern is not observable! " << unsigned(n) << std::endl;
+              std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
               generate_observable_pattern( n, value, pattern, po_vals );
               unordered_node_map<bool, Ntk> po_vals2( ntk );
-              std::cout << "after re-gen, now? " << pattern_is_observable( ntk, n, pattern, POs, po_vals2 ) <<"\n";
+              std::cout << " after re-gen, now? " << pattern_is_observable( ntk, n, pattern, POs, po_vals2 ) <<"\n";
             }
 #endif
             sim.add_pattern(pattern);
@@ -748,6 +748,7 @@ private:
         if ( ( tts[n] & ~odc ) == sim.compute_constant( false ) )
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 0!" << std::endl;
+          #if 0
           std::vector<bool> pattern(ntk.num_pis());
           if ( generate_observable_pattern( n, true, pattern ) )
           {
@@ -760,10 +761,12 @@ private:
               zero = sim.compute_constant(false);
             });
           }
+          #endif
         }
         else if ( ( tts[n] | odc ) == sim.compute_constant( true ) )
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 1!" << std::endl;
+          #if 0
           std::vector<bool> pattern(ntk.num_pis());
           if ( generate_observable_pattern( n, false, pattern ) )
           {
@@ -775,6 +778,7 @@ private:
               zero = sim.compute_constant(false);
             });
           }
+          #endif
         }
       }
 #endif

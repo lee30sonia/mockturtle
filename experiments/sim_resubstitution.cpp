@@ -42,10 +42,10 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "size_after", "#pat aug", "#cex", "#const", "#div0", "#div1", "total time", "sim time", "SAT time", "odc time", "equivalent" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : epfl_benchmarks(~arithmetic & ~hyp) )
   {
-    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    //if ( benchmark != "ctrl" ) continue;
+    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt" ) continue;
+    //if ( benchmark != "sin" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
