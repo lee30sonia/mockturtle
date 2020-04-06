@@ -37,6 +37,7 @@
 #include "../utils/stopwatch.hpp"
 #include "../views/cnf_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/partial_truth_table.hpp>
 //#include <kitty/operators.hpp>
 #include "../utils/node_map.hpp"
@@ -77,6 +78,9 @@ struct patgen_stats
 
   /*! \brief Time for SAT solving. */
   stopwatch<>::duration time_sat{0};
+
+  /* time for ODC computation */
+  stopwatch<>::duration time_odc{0};
 
   /*! \brief Number of constant nodes found. */
   uint32_t num_constant{0};
@@ -376,6 +380,8 @@ private:
 
   patgen_params const& ps;
   patgen_stats& st;
+
+  std::vector<node> POs;
 
   TT tts;
 public:

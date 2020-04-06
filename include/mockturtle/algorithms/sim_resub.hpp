@@ -38,7 +38,6 @@
 #include "../views/depth_view.hpp"
 #include "../views/fanout_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
-#include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/partial_truth_table.hpp>
 //#include <kitty/operators.hpp>
 #include "../utils/node_map.hpp"
@@ -92,9 +91,6 @@ struct simresub_stats
 
   /* time for divisor collection */
   stopwatch<>::duration time_divs{0};
-
-  /* time for ODC computation */
-  stopwatch<>::duration time_odc{0};
 
   /* time for checking implications (containment) */
   stopwatch<>::duration time_collect_unate_divisors{0};
@@ -825,8 +821,6 @@ private:
 
   simresub_params const& ps;
   simresub_stats& st;
-
-  std::vector<node> POs;
 
   /* temporary statistics for progress bar */
   uint32_t candidates{0};
