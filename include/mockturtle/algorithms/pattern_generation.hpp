@@ -311,9 +311,11 @@ private:
           {
             //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
             ++st.num_constant;
-            auto g = ntk.get_constant( !value );
-            /* update network */
-            ntk.substitute_node( n, g );
+            if ( ps.substitute_const )
+            {
+              auto g = ntk.get_constant( tts[n] == ~zero );
+              ntk.substitute_node( n, g );
+            }
             return true; /* next gate */
           }
         }
