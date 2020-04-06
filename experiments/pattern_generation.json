@@ -1,0 +1,187 @@
+[
+  {
+    "entries": [
+      {
+        "#PI": 256,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "adder",
+        "equivalent": true,
+        "sim time": 0.0018465470056980848,
+        "size": 1020,
+        "total time": 0.0019954699091613293
+      },
+      {
+        "#PI": 135,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "bar",
+        "equivalent": true,
+        "sim time": 0.0047841439954936504,
+        "size": 3336,
+        "total time": 0.005522594787180424
+      },
+      {
+        "#PI": 512,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "max",
+        "equivalent": true,
+        "sim time": 0.004064400214701891,
+        "size": 2865,
+        "total time": 0.004408035892993212
+      },
+      {
+        "#PI": 128,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1001,
+        "SAT time": 0.10260952264070511,
+        "benchmark": "multiplier",
+        "equivalent": true,
+        "sim time": 0.06850221008062363,
+        "size": 27062,
+        "total time": 0.17444010078907013
+      },
+      {
+        "#PI": 24,
+        "#cex": 4294967295,
+        "#const": 4,
+        "#pat": 1062,
+        "SAT time": 0.285860538482666,
+        "benchmark": "sin",
+        "equivalent": true,
+        "sim time": 0.3584475815296173,
+        "size": 5416,
+        "total time": 0.6474693417549133
+      },
+      {
+        "#PI": 64,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "square",
+        "equivalent": true,
+        "sim time": 0.02417580783367157,
+        "size": 18484,
+        "total time": 0.026257919147610664
+      },
+      {
+        "#PI": 256,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1001,
+        "SAT time": 0.006287043914198875,
+        "benchmark": "arbiter",
+        "equivalent": true,
+        "sim time": 0.02704068273305893,
+        "size": 11839,
+        "total time": 0.03471364453434944
+      },
+      {
+        "#PI": 10,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1004,
+        "SAT time": 0.0005914340144954622,
+        "benchmark": "cavlc",
+        "equivalent": true,
+        "sim time": 0.004034512210637331,
+        "size": 693,
+        "total time": 0.004718833137303591
+      },
+      {
+        "#PI": 7,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "ctrl",
+        "equivalent": true,
+        "sim time": 0.00022803399770054966,
+        "size": 174,
+        "total time": 0.00025112798903137445
+      },
+      {
+        "#PI": 8,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1130,
+        "SAT time": 0.005909032188355923,
+        "benchmark": "dec",
+        "equivalent": true,
+        "sim time": 0.0460430271923542,
+        "size": 304,
+        "total time": 0.05216405168175697
+      },
+      {
+        "#PI": 147,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1045,
+        "SAT time": 0.008727927692234516,
+        "benchmark": "i2c",
+        "equivalent": true,
+        "sim time": 0.06227351352572441,
+        "size": 1342,
+        "total time": 0.07144223898649216
+      },
+      {
+        "#PI": 11,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1001,
+        "SAT time": 6.97900031809695e-05,
+        "benchmark": "int2float",
+        "equivalent": true,
+        "sim time": 0.0006035770056769252,
+        "size": 260,
+        "total time": 0.0007056900067254901
+      },
+      {
+        "#PI": 128,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1000,
+        "SAT time": 0.0,
+        "benchmark": "priority",
+        "equivalent": true,
+        "sim time": 0.0012321650283411145,
+        "size": 978,
+        "total time": 0.001367095042951405
+      },
+      {
+        "#PI": 60,
+        "#cex": 4294967295,
+        "#const": 0,
+        "#pat": 1070,
+        "SAT time": 0.002720325021073222,
+        "benchmark": "router",
+        "equivalent": true,
+        "sim time": 0.021620281040668488,
+        "size": 257,
+        "total time": 0.024487745016813278
+      },
+      {
+        "#PI": 1001,
+        "#cex": 4294967295,
+        "#const": 7,
+        "#pat": 1009,
+        "SAT time": 1.90131413936615,
+        "benchmark": "voter",
+        "equivalent": true,
+        "sim time": 0.1541028469800949,
+        "size": 13758,
+        "total time": 2.0612807273864746
+      }
+    ],
+    "version": "730b92c"
+  }
+]
