@@ -257,6 +257,18 @@ public:
     patterns = sim.patterns;
   }
 
+  partial_simulator( const std::string& filename )
+  {
+    std::ifstream in( filename, std::ifstream::in );
+    std::string line;
+
+    while ( getline( in, line ) )
+    {
+      patterns.emplace_back( line.length() * 4 );
+      kitty::create_from_hex_string( patterns.back(), line );
+    }
+  }
+
   kitty::partial_truth_table compute_constant( bool value ) const
   {
     kitty::partial_truth_table zero( patterns.at(0).num_bits() );

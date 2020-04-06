@@ -29,6 +29,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/pattern_generation.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
@@ -45,8 +46,8 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks(~arithmetic & ~hyp) )
   {
-    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    //if ( benchmark != "ctrl" ) continue;
+    //if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
+    if ( benchmark != "dec" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -62,7 +63,8 @@ int main()
     ps.progress = false;
 
     patgen_stats st_pat;
-    auto sim = pattern_generation( aig, {.random_seed = 1689}, &st_pat );
+    //auto sim = pattern_generation( aig, {.random_seed = 1689}, &st_pat );
+    partial_simulator<kitty::partial_truth_table> sim( "pats/2.pat" );
 
     sim_resubstitution( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
