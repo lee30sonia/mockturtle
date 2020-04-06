@@ -40,7 +40,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#cex", "#const", "total time", "sim time", "SAT time", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT", "cec" );
 
   for ( auto const& benchmark : epfl_benchmarks() )
   {
@@ -62,7 +62,7 @@ int main()
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), size_before, st.num_total_patterns, -1, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), size_before, st.num_total_patterns, st.num_total_patterns - ps.num_random_pattern, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();

@@ -37,16 +37,13 @@
 #include "../utils/stopwatch.hpp"
 #include "../views/depth_view.hpp"
 #include "../views/fanout_view.hpp"
-//#include "../views/cnf_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
-#include <mockturtle/algorithms/pattern_generation.hpp>
 #include <kitty/partial_truth_table.hpp>
-#include <kitty/operators.hpp>
+//#include <kitty/operators.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
 #include "cleanup.hpp"
 #include <percy/solvers/bsat2.hpp>
-//#include <bill/sat/interface/abc_bsat2.hpp>
 #include "reconv_cut2.hpp"
 
 namespace mockturtle
@@ -54,12 +51,6 @@ namespace mockturtle
 
 struct simresub_params
 {
-  /*! \brief Number of initial simulation patterns = 2^num_pattern_base. */
-  uint32_t num_pattern_base{7};
-
-  /*! \brief Number of reserved blocks(64 bits) for generated simulation patterns. */
-  uint32_t num_reserved_blocks{1};
-
   /*! \brief Maximum number of divisors to consider. */
   uint32_t max_divisors{150};
 
@@ -80,16 +71,11 @@ struct simresub_params
 
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
   uint32_t max_pis{8};
-
-  std::default_random_engine::result_type random_seed{0};
 };
 
 struct simresub_stats
 {
   stopwatch<>::duration time_total{0};
-
-  /* total time for initial simulation and complete pattern generation */
-  stopwatch<>::duration time_simgen{0};
 
   /* time for simulations */
   stopwatch<>::duration time_sim{0};
@@ -123,8 +109,6 @@ struct simresub_stats
   /*! \brief Initial network size (before resubstitution) */
   uint64_t initial_size{0};
 
-  uint32_t num_constant{0};
-  uint32_t num_generated_patterns{0};
   uint32_t num_cex{0};
 
   /*! \brief Total number of gain  */
@@ -293,7 +277,7 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table>& sim )
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
       tts( ntk ), phase( ntkbase ), sim( sim ), literals( node_literals( ntkbase ) )
   {
@@ -333,11 +317,6 @@ public:
     generate_cnf<NtkBase>( ntkbase, [&]( auto const& clause ) {
       solver.add_clause( clause );
     }, literals );
-    
-    /* simulate all nodes and generate complete test patterns, finding out and replace constant nodes at the same time */
-    //call_with_stopwatch( st.time_simgen, [&]() {
-    //  simulate_generate();
-    //});
 
     std::vector<node> PIs( ntk.num_pis() );
     ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
@@ -860,7 +839,7 @@ private:
 } /* namespace detail */
 
 template<class Ntk>
-void sim_resubstitution( Ntk& ntk, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
+void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table> const& sim, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
 {
   /* TODO: check if basetype of ntk is aig */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -880,8 +859,6 @@ void sim_resubstitution( Ntk& ntk, simresub_params const& ps = {}, simresub_stat
   static_assert( has_substitute_node_v<Ntk>, "Ntk does not implement the has substitute_node method" );
   static_assert( has_value_v<Ntk>, "Ntk does not implement the has_value method" );
   static_assert( has_visited_v<Ntk>, "Ntk does not implement the has_visited method" );
-
-  auto sim = pattern_generation( ntk, {.random_seed = 1689} );
 
   using resub_view_t = fanout_view<depth_view<Ntk>>;
   depth_view<Ntk> depth_view{ntk};
