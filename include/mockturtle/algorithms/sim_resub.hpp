@@ -318,8 +318,13 @@ public:
       solver.add_clause( clause );
     }, literals );
 
-    std::vector<node> PIs( ntk.num_pis() );
-    ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
+    //std::vector<node> PIs( ntk.num_pis() );
+    //ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
+
+    call_with_stopwatch( st.time_sim, [&]() {
+      simulate_nodes<Ntk>( ntk, tts, sim );
+    });
+    normalizeTT();
 
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();
