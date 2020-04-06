@@ -240,20 +240,26 @@ class partial_simulator<kitty::partial_truth_table>
 {
 public:
   partial_simulator() = delete;
-  partial_simulator( unsigned num_pis, unsigned num_pattern_base, unsigned num_reserved_blocks, std::default_random_engine::result_type seed = 0 )
+  partial_simulator( unsigned num_pis, unsigned num_pattern, std::default_random_engine::result_type seed = 0 )
   {
     assert( num_pis > 0 );
 
     for ( auto i = 0u; i < num_pis; ++i )
     {
-      patterns.emplace_back( 1 << num_pattern_base, num_reserved_blocks << 6 );
+      patterns.emplace_back( num_pattern );
       kitty::create_random( patterns.back(), seed+i );
     }
   }
 
+  /* copy constructor */
+  partial_simulator( partial_simulator const& sim )
+  {
+    patterns = sim.patterns;
+  }
+
   kitty::partial_truth_table compute_constant( bool value ) const
   {
-    kitty::partial_truth_table zero( patterns.at(0).num_bits(), ( patterns.at(0).num_blocks() << 6 ) - patterns.at(0).num_bits() );
+    kitty::partial_truth_table zero( patterns.at(0).num_bits() );
     return value ? ~zero : zero;
   }
 

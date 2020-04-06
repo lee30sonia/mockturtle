@@ -29,6 +29,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
+#include <mockturtle/algorithms/pattern_generation.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
@@ -40,12 +41,12 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "size_after", "#pat aug", "#cex", "#const", "#div0", "#div1", "total time", "sim time", "SAT time", "odc time", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#const", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
   for ( auto const& benchmark : epfl_benchmarks(~arithmetic & ~hyp) )
   {
-    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt" ) continue;
-    //if ( benchmark != "sin" ) continue;
+    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
+    //if ( benchmark != "ctrl" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -55,21 +56,20 @@ int main()
     simresub_params ps;
     simresub_stats st;
 
-    ps.num_pattern_base = (benchmark=="div")? 17u: 10u;
-    ps.num_reserved_blocks = (benchmark=="div")? 200u: 10u;
-    // assert ( ps.num_reserved_blocks < (1 << (num_pattern_base-6)) );
     ps.max_pis = 10u; //100u; //8u;
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
-    ps.random_seed = 1689;
     ps.progress = false;
 
-    sim_resubstitution( aig, ps, &st );
+    patgen_stats st_pat;
+    auto sim = pattern_generation( aig, {.random_seed = 1689}, &st_pat );
+
+    sim_resubstitution( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
     //std::cout << "num_total_divisors = " << st.num_total_divisors << std::endl;
-    exp( benchmark, aig.num_pis(), orig.num_gates(), aig.num_gates(), st.num_generated_patterns, st.num_cex, st.num_constant, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_odc ), cec );
+    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st_pat.num_constant, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();
