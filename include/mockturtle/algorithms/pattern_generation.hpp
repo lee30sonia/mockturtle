@@ -299,7 +299,7 @@ private:
             }
 #endif
             sim.add_pattern(pattern);
-            ++st.num_generated_patterns;
+            ++st.num_total_patterns;
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
@@ -313,9 +313,7 @@ private:
             ++st.num_constant;
             auto g = ntk.get_constant( !value );
             /* update network */
-            call_with_stopwatch( st.time_substitute, [&]() {
-              ntk.substitute_node( n, g );
-            });
+            ntk.substitute_node( n, g );
             return true; /* next gate */
           }
         }
@@ -338,7 +336,7 @@ private:
           if ( generate_observable_pattern( n, true, pattern ) )
           {
             sim.add_pattern(pattern);
-            ++st.num_generated_patterns;
+            ++st.num_total_patterns;
 
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
@@ -356,7 +354,7 @@ private:
           if ( generate_observable_pattern( n, false, pattern ) )
           {
             sim.add_pattern(pattern);
-            ++st.num_generated_patterns;
+            ++st.num_total_patterns;
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
               simulate_nodes<Ntk>( ntk, tts, sim );
