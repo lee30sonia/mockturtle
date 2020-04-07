@@ -95,8 +95,8 @@ struct simresub_stats
   /* time for checking implications (containment) */
   stopwatch<>::duration time_collect_unate_divisors{0};
 
-  /* time for doing substitution */
-  stopwatch<>::duration time_substitute{0};
+  /* time for executing the user-specified callback when candidates found */
+  stopwatch<>::duration time_callback{0};
 
   /* time & number of r == d (equal) node substitutions */
   stopwatch<>::duration time_resub0{0};
@@ -130,6 +130,14 @@ struct simresub_stats
 
 namespace detail
 {
+
+template<typename Ntk>
+bool substitue_fn( Ntk& ntk, typename Ntk::node& n, typename Ntk::signal& g )
+{
+  ntk.substitute_node( n, g );
+  //std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
+  return true;
+};
 
 /* based on abcRefs.c */
 template<typename Ntk>
@@ -242,6 +250,7 @@ public:
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
+  using resub_callback_t = std::function<bool( NtkBase&, node&, signal& )>;
 
   struct unate_divisors
   {
@@ -277,8 +286,8 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim )
-    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), 
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim, resub_callback_t& callback = substitue_fn<NtkBase> )
+    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
       tts( ntk ), phase( ntkbase ), sim( sim ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
@@ -352,17 +361,21 @@ public:
         /* update progress bar */
         candidates++;
         st.estimated_gain += last_gain;
+
         /* update network */
-        call_with_stopwatch( st.time_substitute, [&]() {
-            ntk.substitute_node( n, *g );
-            //std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(*g))<<std::endl;
+        const auto ntk_is_updated = call_with_stopwatch( st.time_callback, [&]() {
+            return callback( ntkbase, n, *g );
           });
-        /* re-simulate */
-        call_with_stopwatch( st.time_sim, [&]() {
-            un_normalizeTT();
-            simulate_nodes<Ntk>( ntk, tts, sim );
-            normalizeTT();
-          });
+        if ( ntk_is_updated )
+        {
+          /* re-simulate */
+          call_with_stopwatch( st.time_sim, [&]() {
+              un_normalizeTT();
+              simulate_nodes<Ntk>( ntk, tts, sim );
+              normalizeTT();
+            });
+        }
+
         return true; /* next */
       });
   }
@@ -821,6 +834,8 @@ private:
 
   simresub_params const& ps;
   simresub_stats& st;
+
+  resub_callback_t& callback;
 
   /* temporary statistics for progress bar */
   uint32_t candidates{0};
