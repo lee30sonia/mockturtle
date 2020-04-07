@@ -132,11 +132,18 @@ namespace detail
 {
 
 template<typename Ntk>
-bool substitue_fn( Ntk& ntk, typename Ntk::node& n, typename Ntk::signal& g )
+bool substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
 {
   ntk.substitute_node( n, g );
   //std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
   return true;
+};
+
+template<typename Ntk>
+bool report_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
+{
+  std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
+  return false;
 };
 
 /* based on abcRefs.c */
@@ -250,7 +257,7 @@ public:
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
-  using resub_callback_t = std::function<bool( NtkBase&, node&, signal& )>;
+  using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
 
   struct unate_divisors
   {
@@ -286,7 +293,7 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim, resub_callback_t& callback = substitue_fn<NtkBase> )
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
       tts( ntk ), phase( ntkbase ), sim( sim ), literals( node_literals( ntkbase ) )
   {
@@ -366,15 +373,7 @@ public:
         const auto ntk_is_updated = call_with_stopwatch( st.time_callback, [&]() {
             return callback( ntkbase, n, *g );
           });
-        if ( ntk_is_updated )
-        {
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-              un_normalizeTT();
-              simulate_nodes<Ntk>( ntk, tts, sim );
-              normalizeTT();
-            });
-        }
+        (void)ntk_is_updated; /* don't actually need to simulate again... */
 
         return true; /* next */
       });
@@ -757,6 +756,12 @@ private:
             solver.add_clause( {lit_not( l_s0 ), l_g} );
             solver.add_clause( {lit_not( l_s1 ), l_g} );
             solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
+            /* re-simulate */
+            call_with_stopwatch( st.time_sim, [&]() {
+                un_normalizeTT();
+                simulate_nodes<Ntk>( ntk, tts, sim );
+                normalizeTT();
+              });
             return g;
           }
         }
@@ -819,6 +824,12 @@ private:
             solver.add_clause( {lit_not( l_g ), l_s0} );
             solver.add_clause( {lit_not( l_g ), l_s1} );
             solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
+            /* re-simulate */
+            call_with_stopwatch( st.time_sim, [&]() {
+                un_normalizeTT();
+                simulate_nodes<Ntk>( ntk, tts, sim );
+                normalizeTT();
+              });
             return g;
           }
         }
@@ -835,7 +846,7 @@ private:
   simresub_params const& ps;
   simresub_stats& st;
 
-  resub_callback_t& callback;
+  resub_callback_t const& callback;
 
   /* temporary statistics for progress bar */
   uint32_t candidates{0};
@@ -886,7 +897,7 @@ void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table>
 
   simresub_stats st;
 
-  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim );
+  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, detail::report_fn<Ntk> );
   p.run();
   if ( ps.verbose )
     st.report();
