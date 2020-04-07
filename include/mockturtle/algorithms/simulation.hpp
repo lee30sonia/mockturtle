@@ -451,7 +451,7 @@ void simulate_nodes( Ntk const& ntk, unordered_node_map<SimulationType, Ntk>& no
 
 /* helper function to fix the non-topological order problem */
 template<class Ntk>
-void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, partial_simulator<kitty::partial_truth_table> const& sim, int& num_bits )
+void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, partial_simulator<kitty::partial_truth_table> const& sim, uint32_t& num_bits )
 {
   std::vector<kitty::partial_truth_table> fanin_values( ntk.fanin_size( n ) );
   ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
