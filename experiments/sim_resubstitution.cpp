@@ -44,10 +44,9 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#const", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks(~arithmetic & ~hyp) )
+  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt ) )
   {
-    //if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    if ( benchmark != "dec" ) continue;
+    if ( benchmark != "max" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -62,9 +61,19 @@ int main()
     ps.max_inserts = 1u;
     ps.progress = false;
 
+    bool useExternal = false;
     patgen_stats st_pat;
-    //auto sim = pattern_generation( aig, {.random_seed = 1689}, &st_pat );
-    partial_simulator<kitty::partial_truth_table> sim( "pats/2.pat" );
+    partial_simulator<kitty::partial_truth_table> sim(1,1);
+    if ( useExternal )
+    {
+      if ( benchmark == "sin" || benchmark == "voter" ) continue; // don't have abc patterns
+      sim = partial_simulator<kitty::partial_truth_table>( "pats/" + benchmark + ".pat" );
+      st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
+    }
+    else
+    {
+      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000}, &st_pat );
+    }
 
     sim_resubstitution( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
