@@ -39,6 +39,7 @@
 #include "../views/fanout_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
 #include <kitty/partial_truth_table.hpp>
+//#include <kitty/print.hpp>
 //#include <kitty/operators.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
@@ -142,6 +143,7 @@ bool substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal c
 template<typename Ntk>
 bool report_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
 {
+  //(void)ntk; (void)n; (void)g;
   std::cout<<"substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
   return false;
 };
@@ -265,37 +267,17 @@ public:
 
     std::vector<signal> positive_divisors;
     std::vector<signal> negative_divisors;
-    std::vector<signal> next_candidates;
 
     void clear()
     {
       positive_divisors.clear();
       negative_divisors.clear();
-      next_candidates.clear();
-    }
-  };
-
-  struct binate_divisors
-  {
-    using signal = typename Ntk::signal;
-
-    std::vector<signal> positive_divisors0;
-    std::vector<signal> positive_divisors1;
-    std::vector<signal> negative_divisors0;
-    std::vector<signal> negative_divisors1;
-
-    void clear()
-    {
-      positive_divisors0.clear();
-      positive_divisors1.clear();
-      negative_divisors0.clear();
-      negative_divisors1.clear();
     }
   };
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
-      tts( ntk ), phase( ntkbase ), sim( sim ), literals( node_literals( ntkbase ) )
+      tts( ntk ), sim( sim ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
 
@@ -340,7 +322,6 @@ public:
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
-    normalizeTT();
 
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();
@@ -373,8 +354,14 @@ public:
         const auto ntk_is_updated = call_with_stopwatch( st.time_callback, [&]() {
             return callback( ntkbase, n, *g );
           });
-        (void)ntk_is_updated; /* don't actually need to simulate again... */
-
+        //(void)ntk_is_updated; /* don't actually need to simulate again... */
+        if ( ntk_is_updated )
+        {
+          /* re-simulate */
+          call_with_stopwatch( st.time_sim, [&]() {
+            simulate_nodes<Ntk>( ntk, tts, sim );
+          });
+        }
         return true; /* next */
       });
   }
@@ -568,8 +555,10 @@ private:
       return g; /* accepted resub */
     }
 
-    if ( ps.max_inserts == 0 || num_mffc == 1 )
+    if ( ps.max_inserts == 0 || num_mffc <= 1 )
+    {
       return std::nullopt;
+    }
 
     /* collect level one divisors */
     call_with_stopwatch( st.time_collect_unate_divisors, [&]() {
@@ -588,33 +577,11 @@ private:
     }
 
     if ( ps.max_inserts == 1 || num_mffc == 2 )
+    {
       return std::nullopt;
-
+    }
 
     return std::nullopt;
-  }
-
-  void normalizeTT()
-  {
-    ntk.foreach_gate( [&]( auto const& n ){
-      if ( kitty::get_bit( tts[n], 0 ) )
-      {
-        phase[n] = true;
-        tts[n] = ~tts[n];
-      }
-      else
-        phase[n] = false;
-    });
-  }
-
-  void un_normalizeTT()
-  {
-    ntk.foreach_gate( [&]( auto const& n ){
-      if ( phase.has(n) && phase[n] )
-      {
-        tts[n] = ~tts[n];
-      }
-    });
   }
 
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
@@ -626,15 +593,17 @@ private:
     for ( int i = num_divs-1; i >= 0; --i )
     {
       auto const d = divs.at( i );
-      if ( tt == tts[d] )
+      if ( tt == tts[d] || ~tt == tts[d] )
       {
+        bool phase = ( ~tt == tts[d] );
+
         solver.add_var();
         auto nlit = make_lit( solver.nr_vars()-1 );
         solver.add_clause( {literals[root], literals[d], nlit} );
         solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
         solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
         solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
-        std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, phase[root] == phase[d] ) );
+        std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, !phase ) );
       
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
@@ -650,13 +619,11 @@ private:
 
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
-            un_normalizeTT();
             simulate_nodes<Ntk>( ntk, tts, sim );
-            normalizeTT();
           });
         }
         else /* proved equal */
-          return ( phase[root] == phase[d] )? ntk.make_signal( d ): !ntk.make_signal( d );
+          return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
       }
     }
 
@@ -683,6 +650,11 @@ private:
         udivs.positive_divisors.emplace_back( ntk.make_signal( d ) );
         continue;
       }
+      if ( kitty::implies( ~tt_d, tt ) )
+      {
+        udivs.positive_divisors.emplace_back( !ntk.make_signal( d ) );
+        continue;
+      }
 
       /* check negative containment */
       if ( kitty::implies( tt, tt_d ) )
@@ -690,8 +662,11 @@ private:
         udivs.negative_divisors.emplace_back( ntk.make_signal( d ) );
         continue;
       }
-
-      udivs.next_candidates.emplace_back( ntk.make_signal( d ) );
+      if ( kitty::implies( tt, ~tt_d ) )
+      {
+        udivs.negative_divisors.emplace_back( !ntk.make_signal( d ) );
+        continue;
+      }
     }
   }
 
@@ -709,14 +684,14 @@ private:
       {
         auto const& s1 = udivs.positive_divisors.at( j );
 
-        auto const& tt_s0 = tts[s0];
-        auto const& tt_s1 = tts[s1];
+        auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
+        auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
         if ( ( tt_s0 | tt_s1 ) == tt )
         {
-          auto l_r = lit_not_cond( literals[root], phase[root] );
-          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], phase[ntk.get_node(s0)]);
-          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], phase[ntk.get_node(s1)]);
+          auto l_r = literals[root];
+          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
+          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
 
           solver.add_var();
           auto nlit = make_lit( solver.nr_vars()-1 );
@@ -739,28 +714,24 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-              un_normalizeTT();
               simulate_nodes<Ntk>( ntk, tts, sim );
-              normalizeTT();
             });
           }
           else /* proved substitution */
           {
-            //std::cout<<"found substitution "<<(phase[root]?"~":"")<< unsigned(root)<<" = "<<(phase[s0]?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(phase[s1]?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            auto g = phase[root]? !ntk.create_or( phase[s0]? !s0: s0, phase[s1]? !s1: s1 ) :ntk.create_or( phase[s0]? !s0: s0, phase[s1]? !s1: s1 );
+            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
+            auto g = ntk.create_or( s0, s1 );
             /* update CNF */
             literals.resize();
             solver.add_var();
             literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-            auto l_g = lit_not_cond( literals[ntk.get_node(g)], phase[root] );
+            auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
             solver.add_clause( {lit_not( l_s0 ), l_g} );
             solver.add_clause( {lit_not( l_s1 ), l_g} );
             solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-                un_normalizeTT();
                 simulate_nodes<Ntk>( ntk, tts, sim );
-                normalizeTT();
               });
             return g;
           }
@@ -777,14 +748,14 @@ private:
       {
         auto const& s1 = udivs.negative_divisors.at( j );
 
-        auto const& tt_s0 = tts[s0];
-        auto const& tt_s1 = tts[s1];
+        auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
+        auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
         if ( ( tt_s0 & tt_s1 ) == tt )
         {
-          auto l_r = lit_not_cond( literals[root], phase[root] );
-          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], phase[ntk.get_node(s0)]);
-          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], phase[ntk.get_node(s1)]);
+          auto l_r = literals[root];
+          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
+          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
 
           solver.add_var();
           auto nlit = make_lit( solver.nr_vars()-1 );
@@ -807,28 +778,24 @@ private:
   
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-              un_normalizeTT();
               simulate_nodes<Ntk>( ntk, tts, sim );
-              normalizeTT();
             });
           }
           else /* proved substitution */
           {
-            //std::cout<<"found substitution "<<(phase[root]?"~":"")<< unsigned(root)<<" = "<<(phase[s0]?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(phase[s1]?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            auto g = phase[root]? !ntk.create_and( phase[s0]? !s0: s0, phase[s1]? !s1: s1 ) :ntk.create_and( phase[s0]? !s0: s0, phase[s1]? !s1: s1 );
+            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
+            auto g = ntk.create_and( s0, s1 );
             /* update CNF */
             literals.resize();
             solver.add_var();
             literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-            auto l_g = lit_not_cond( literals[ntk.get_node(g)], phase[root] );
+            auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
             solver.add_clause( {lit_not( l_g ), l_s0} );
             solver.add_clause( {lit_not( l_g ), l_s1} );
             solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
-                un_normalizeTT();
                 simulate_nodes<Ntk>( ntk, tts, sim );
-                normalizeTT();
               });
             return g;
           }
@@ -853,14 +820,12 @@ private:
   uint32_t last_gain{0};
 
   TT tts;
-  unordered_node_map<bool, NtkBase> phase;
   partial_simulator<kitty::partial_truth_table> sim;
 
   node_map<uint32_t, NtkBase> literals;
   percy::bsat_wrapper solver;
 
   unate_divisors udivs;
-  binate_divisors bdivs;
 
   std::vector<node> temp;
   std::vector<node> divs;
@@ -897,7 +862,7 @@ void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table>
 
   simresub_stats st;
 
-  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, detail::report_fn<Ntk> );
+  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, detail::substitue_fn<Ntk> );
   p.run();
   if ( ps.verbose )
     st.report();

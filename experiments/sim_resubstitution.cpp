@@ -46,7 +46,7 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt ) )
   {
-    if ( benchmark != "max" ) continue;
+    //if ( benchmark != "cavlc" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -73,6 +73,7 @@ int main()
     else
     {
       sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000}, &st_pat );
+      aig = cleanup_dangling( aig );
     }
 
     sim_resubstitution( aig, sim, ps, &st );
