@@ -208,7 +208,7 @@ public:
     auto const po_index = _storage->outputs.size();
     _storage->outputs.emplace_back( f.index, f.complement );
     ++_storage->data.num_pos;
-    return po_index;
+    return static_cast<uint32_t>( po_index );
   }
 
   signal create_ro( std::string const& name = std::string() )
@@ -231,7 +231,7 @@ public:
     auto const ri_index = _storage->outputs.size();
     _storage->outputs.emplace_back( f.index, f.complement );
     _storage->data.latches.emplace_back( reset );
-    return ri_index;
+    return static_cast<uint32_t>( ri_index );
 
   }
 
@@ -605,7 +605,7 @@ public:
 
   uint32_t num_latches() const
   {
-      return _storage->data.latches.size();
+      return static_cast<uint32_t>( _storage->data.latches.size() );
   }
 
   auto num_pis() const
