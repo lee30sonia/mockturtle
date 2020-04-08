@@ -29,6 +29,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <mockturtle/algorithms/pattern_generation.hpp>
+//#include <mockturtle/algorithms/pattern_generation_cnfview.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
