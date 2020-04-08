@@ -35,16 +35,14 @@
 #include <mockturtle/networks/aig.hpp>
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
-#include "../views/cnf_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/partial_truth_table.hpp>
-//#include <kitty/operators.hpp>
+#include <kitty/print.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
 #include "cleanup.hpp"
 #include <percy/solvers/bsat2.hpp>
-#include <bill/sat/interface/abc_bsat2.hpp>
 
 namespace mockturtle
 {
@@ -56,6 +54,12 @@ struct patgen_params
 
   /*! \brief Whether to substitute constant nodes. */
   bool substitute_const{true};
+
+  /*! \brief Whether to check and re-generate type 1 observable patterns. */
+  bool observability_type1{false};
+
+  /*! \brief Whether to check and re-generate type 2 observable patterns. */
+  bool observability_type2{false};
 
   /*! \brief Show progress. */
   bool progress{false};
@@ -112,7 +116,7 @@ public:
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
 
   explicit patgen_impl( Ntk& ntk, patgen_params const& ps, patgen_stats& st )
-    : ntk( ntk ), ps( ps ), st( st ), 
+    : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
       tts( ntk ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
   {
     st.num_total_patterns = ps.num_random_pattern;
@@ -125,138 +129,120 @@ public:
     /* start the managers */
     //progress_bar pbar{ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress};
 
+    generate_cnf<Ntk>( ntk, [&]( auto const& clause ) {
+      solver.add_clause( clause );
+    }, literals );
+
     simulate_generate();
   }
 
 private:
-  /* `me` is one of `fo`'s fanin, get the other one. assuming 2-input gates */
-  signal get_other_fanin( node const& fo, node const& me )
+  void add_clauses_for_gate( node const& n, unordered_node_map<uint32_t, Ntk> const& lits, bool inverse = false )
   {
-    signal ret;
-    ntk.foreach_fanin( fo, [&]( auto const& foi ){
-      if ( ntk.get_node( foi ) != me )
-      {
-        ret = foi;
-        return false;
-      }
-      return true;
+    /* currently only consider AIG */
+    std::vector<uint32_t> l_fi;
+    const auto c = lit_not_cond( lits[n], inverse );
+    ntk.foreach_fanin( n, [&]( auto const& fi ){
+      l_fi.emplace_back( lit_not_cond( lits.has( ntk.get_node(fi) )? lits[fi]: literals[fi], ntk.is_complemented( fi ) ) );
     });
-    return ret;
+
+    assert( ntk.is_and( n ) );
+    /* AND gate */
+    solver.add_clause( {l_fi[0], lit_not( c )} );
+    solver.add_clause( {l_fi[1], lit_not( c )} );
+    solver.add_clause( {lit_not( l_fi[0] ), lit_not( l_fi[1] ), c} );
   }
-#if 0
-  void DFS( node const& n_ori, node const& n, std::vector<bool>& pattern, std::vector<pabc::lit>& assumptions, bool& fReturn, uint32_t& nFail )
+
+  void duplicate_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk> const& lits )
   {
-    //std::cout<<"DFS: node "<<unsigned(n)<<std::endl;
     ntk.foreach_fanout( n, [&]( auto const& fo ){
-      if ( fReturn ) /* whether we have gotten an observable pattern */
-        return false; /* terminate foreach_fanout, also terminating recursive DFS */
+      if ( ntk.visited( fo ) == ntk.trav_id() ) return true; /* skip */
+      ntk.set_visited( fo, ntk.trav_id() );
 
-      /* add assumption if the other fanin of this node is controlling value */
-      auto foi = get_other_fanin( fo, n );
-      //std::cout<<"add assumption for fanout "<<unsigned(fo)<<", the other fanin is "<<(ntk.is_complemented(foi)?"~":"")<<unsigned(ntk.get_node(foi))<<std::endl;
-      assumptions.emplace_back( lit_not_cond( literals[ntk.get_node(foi)], ntk.is_complemented(foi) ) );
+      add_clauses_for_gate( fo, lits );
 
-      bool fEnd = false; /* whether has reached the end of a path */
-      ntk.foreach_po( [&]( auto const& f ){ 
-        if ( ntk.get_node(f) == fo ) /* DFS reached one of POs */
-        {
-          //std::cout<<"reach PO "<<unsigned(ntk.get_node(f))<<" try solving with "<<assumptions.size()<<" assumptions"<<std::endl;
-          //for (auto j=1u; j<assumptions.size(); ++j) std::cout<<int(assumptions[j]/2)<<" "; std::cout<<"\n";
-          const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + assumptions.size(), 0 );
-          });
-          if ( res == percy::synth_result::success )
-          {
-            for ( auto i = 1u; i <= ntk.num_pis(); ++i )
-              pattern[i-1] = (solver.var_value( i ));
-            fReturn = call_with_stopwatch( st.time_odc, [&]() { 
-              return pattern_is_observable( ntk, n_ori, pattern, POs );
-            });
-            std::cout<<"SAT, now observable? "<<fReturn<<"\n";
-          }
-          if ( !fReturn ) /* UNSAT or SAT but still not observable */
-          {
-            if ( ++nFail >= ps.ODC_failure_limit )
-            {
-              std::cout<<"conflict limit reached!"<<std::endl;
-              fReturn = true;
-            }
-          }
+      duplicate_fanout_cone_rec( fo, lits );
+      return true; /* next */
+    });
+  }
 
-          fEnd = true;
-          return false; /* terminate foreach_po */
-        }
-        return true; /* check the next PO */
-      });
+  void make_lit_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk>& lits )
+  {
+    ntk.foreach_fanout( n, [&]( auto const& fo ){
+      if ( ntk.visited( fo ) == ntk.trav_id() ) return true; /* skip */
+      ntk.set_visited( fo, ntk.trav_id() );
 
-      if ( !fEnd )
-        DFS( n_ori, fo, pattern, assumptions, fReturn, nFail );
+      solver.add_var();
+      lits[fo] = make_lit( solver.nr_vars() - 1 );
       
-      //std::cout<<"pop assumption for fanout "<<unsigned(fo)<<std::endl;
-      assumptions.pop_back();
-
-      return true; /* try next fanout (another path) */
-    });   
+      make_lit_fanout_cone_rec( fo, lits );
+      return true; /* next */
+    });
   }
 
   bool generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern )
   {
-    //std::cout<<"generating pattern for n to be "<<value<<" and observable.\n";
+    solver.bookmark();
+
+    /* for the original circuit, assert original n to be value */
     std::vector<pabc::lit> assumptions( 1 );
     assumptions[0] = lit_not_cond( literals[n], !value );
 
-    bool fReturn = false; /* whether we have gotten an observable pattern */
-    uint32_t nFail = 0; /* number of failed paths */
-    DFS( n, n, pattern, assumptions, fReturn, nFail );
-    return fReturn;
-  }
-#endif
-  bool generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern, unordered_node_map<bool, Ntk> const& po_vals )
-  {
-    //std::cout<<"generating pattern for n to be "<<value<<" and observable.\n";
-    ntk.deactivate( n );
-
-    std::vector<bill::lit_type> assumptions;
-    if ( value )
-    {
-      ntk.foreach_fanin( n, [&]( auto const& f ){
-        assumptions.emplace_back( ntk.lit( f ) );
-        return true;
-      });
-    }
-    else
-    {
-      std::vector<bill::lit_type> clause;
-      auto nlit = bill::lit_type( ntk.add_var(), bill::lit_type::polarities::positive );
-      ntk.foreach_fanin( n, [&]( auto const& f ){
-        clause.emplace_back( ~( ntk.lit( f ) ) );
-        return true;
-      });
-      clause.emplace_back( nlit );
-      ntk.add_clause( clause );
-      assumptions.emplace_back( ~nlit );
-    }
-    assumptions.emplace_back( value? ~( ntk.lit( n ) ): ntk.lit( n ) );
-    ntk.foreach_po( [&]( auto const& f ){ 
-      assumptions.emplace_back( po_vals[f] ? ~( ntk.lit( ntk.get_node(f) ) ): ntk.lit( ntk.get_node(f) ) );
-      return false; /* only try for the first PO now */
+    /* literals for the duplicated part */
+    unordered_node_map<uint32_t, Ntk> lits( ntk );
+    ntk.foreach_fanin( n, [&]( auto const& fi ){
+      lits[fi] = literals[fi];
     });
+    solver.add_var();
+    lits[n] = make_lit( solver.nr_vars() - 1 );
+    ntk.incr_trav_id();
+    make_lit_fanout_cone_rec( n, lits );
 
+    /* the inverse version of n */
+    add_clauses_for_gate( n, lits, true );
+
+    /* the other copy of fanout cone */
+    ntk.incr_trav_id();
+    duplicate_fanout_cone_rec( n, lits );
+
+    /* miter for POs */
+    std::vector<uint32_t> miter;
+    ntk.foreach_po( [&]( auto const& f ){
+      if ( !lits.has( ntk.get_node( f ) ) ) return true; /* PO not in TFO, skip */
+
+      const auto a = lit_not_cond( literals[f], ntk.is_complemented( f ) );
+      const auto b = lit_not_cond( lits[f], ntk.is_complemented( f ) );
+
+      solver.add_var();
+      const auto c = make_lit( solver.nr_vars() - 1 );
+      miter.emplace_back( c );
+
+      solver.add_clause( {lit_not( a ), lit_not( b ), lit_not( c )} );
+      solver.add_clause( {lit_not( a ), b, c} );
+      solver.add_clause( {a, lit_not( b ), c} );
+      solver.add_clause( {a, b, lit_not( c )} );
+
+      return true; /* next */
+    });
+    solver.add_clause( miter );
+
+    /* solve and get answer */
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return ntk.solve( assumptions );
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, 1000 );
     });
-
-    if ( res )
+    if ( res == percy::synth_result::success )
     {
-      std::cout<<"generation "<< ((*res)? "SAT": "UNSAT") ;//<<"\n";
-      if ( *res )
-        pattern = ntk.pi_model_values();
-      ntk.activate( n );
-      return *res;
+      pattern.clear();
+      for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+        pattern.push_back(solver.var_value( j ));
     }
+    else if ( res == percy::synth_result::failure ) 
+      std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<"\n";
+    else
+      std::cout<<"solver timeout\n";
 
-    ntk.activate( n );
-    return false;
+    solver.rollback();
+    return ( res == percy::synth_result::success );
   }
 
   void simulate_generate()
@@ -265,9 +251,9 @@ private:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    std::vector<bill::lit_type> assumptions( 1 ); /* bill::result::clause_type */
+    std::vector<pabc::lit> assumptions( 1 );
     kitty::partial_truth_table zero = sim.compute_constant(false);
-  
+
     ntk.foreach_gate( [&]( auto const& n ) 
     {
       //std::cout<<"processing node "<<unsigned(n)<<std::endl;
@@ -275,57 +261,58 @@ private:
       {
         bool value = !(tts[n] == ~zero); /* wanted value of n */
 
-        assumptions[0] = value? ntk.lit( n ): ~( ntk.lit( n ) ); //lit_not_cond( literals[n], (tts[n] == ~zero) );
+        assumptions[0] = lit_not_cond( literals[n], !value );
       
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          return ntk.solve( assumptions );
+          return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
         });
         
-        if ( res )
+        if ( res == percy::synth_result::success )
         {
-          if ( *res )
+          //std::cout << "SAT: add pattern. (" << n << " = " << value <<")" << std::endl;
+          std::vector<bool> pattern;
+          for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+            pattern.push_back(solver.var_value( j ));
+
+          if ( ps.observability_type1 )
           {
-            //std::cout << "SAT: add pattern. (" << n << ")" << std::endl;
-            std::vector<bool> pattern = ntk.pi_model_values();
-#if 0
             /* check if the found pattern is observable */ 
             ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
-            unordered_node_map<bool, Ntk> po_vals( ntk );
+            //unordered_node_map<bool, Ntk> po_vals( ntk );
             bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-                return pattern_is_observable( ntk, n, pattern, POs, po_vals );
+                return pattern_is_observable( ntk, n, pattern, POs );
               });
             if ( !observable )
             {
               std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
-              generate_observable_pattern( n, value, pattern, po_vals );
-              unordered_node_map<bool, Ntk> po_vals2( ntk );
-              std::cout << " after re-gen, now? " << pattern_is_observable( ntk, n, pattern, POs, po_vals2 ) <<"\n";
+              if ( generate_observable_pattern( n, value, pattern ) )
+                std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs ) <<"\n";
             }
-#endif
-            sim.add_pattern(pattern);
-            ++st.num_total_patterns;
-  
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-              zero = sim.compute_constant(false);
-            });
           }
-          else
+
+          sim.add_pattern(pattern);
+          ++st.num_total_patterns;
+
+          /* re-simulate */
+          call_with_stopwatch( st.time_sim, [&]() {
+            simulate_nodes<Ntk>( ntk, tts, sim );
+            zero = sim.compute_constant(false);
+          });
+        }
+        else
+        {
+          //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
+          ++st.num_constant;
+          if ( ps.substitute_const )
           {
-            //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
-            ++st.num_constant;
-            if ( ps.substitute_const )
-            {
-              auto g = ntk.get_constant( tts[n] == ~zero );
-              ntk.substitute_node( n, g );
-            }
-            return true; /* next gate */
+            auto g = ntk.get_constant( tts[n] == ~zero );
+            ntk.substitute_node( n, g );
           }
+          return true; /* next gate */
         }
       }
-#if 0
-      else
+
+      else if ( ps.observability_type2 )
       {
         /* compute ODC */
         ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
@@ -337,7 +324,7 @@ private:
         if ( ( tts[n] & ~odc ) == sim.compute_constant( false ) )
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 0!" << std::endl;
-          #if 0
+
           std::vector<bool> pattern(ntk.num_pis());
           if ( generate_observable_pattern( n, true, pattern ) )
           {
@@ -349,28 +336,37 @@ private:
               simulate_nodes<Ntk>( ntk, tts, sim );
               zero = sim.compute_constant(false);
             });
+
+            auto odc2 = call_with_stopwatch( st.time_odc, [&]() { 
+              return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs );
+            });
+            std::cout<<"adding generated pattern, now? "<<( ( tts[n] & ~odc2 ) != sim.compute_constant( false ) )<<"\n";
           }
-          #endif
         }
         else if ( ( tts[n] | odc ) == sim.compute_constant( true ) )
         {
           std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 1!" << std::endl;
-          #if 0
+
           std::vector<bool> pattern(ntk.num_pis());
           if ( generate_observable_pattern( n, false, pattern ) )
           {
             sim.add_pattern(pattern);
             ++st.num_total_patterns;
+
             /* re-simulate */
             call_with_stopwatch( st.time_sim, [&]() {
               simulate_nodes<Ntk>( ntk, tts, sim );
               zero = sim.compute_constant(false);
             });
+
+            auto odc2 = call_with_stopwatch( st.time_odc, [&]() { 
+              return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs );
+            });
+            std::cout<<"adding generated pattern, now? "<<( ( tts[n] | odc2 ) != sim.compute_constant( true ) )<<"\n";
           }
-          #endif
         }
       }
-#endif
+
       return true; /* next gate */
     } );
   }
@@ -383,7 +379,11 @@ private:
 
   std::vector<node> POs;
 
+  node_map<uint32_t, Ntk> literals;
+  percy::bsat_wrapper solver;
+  
   TT tts;
+
 public:
   partial_simulator<kitty::partial_truth_table> sim;
 };
@@ -412,12 +412,11 @@ partial_simulator<kitty::partial_truth_table> pattern_generation( Ntk& ntk, patg
   static_assert( has_value_v<Ntk>, "Ntk does not implement the has_value method" );
   static_assert( has_visited_v<Ntk>, "Ntk does not implement the has_visited method" );
 
-  using view_t = cnf_view<Ntk, true>; //, bill::solvers::bsat2>
-  view_t view( ntk, {.auto_update = false} );
-
   patgen_stats st;
 
-  detail::patgen_impl p( view, ps, st );
+  fanout_view<Ntk> fanout_view{ntk};
+
+  detail::patgen_impl p( fanout_view, ps, st );
   p.run();
 
   if ( ps.verbose )

@@ -43,10 +43,9 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
-    if ( benchmark == "hyp" || benchmark == "mem_ctrl" || benchmark == "log2" || benchmark == "div" || benchmark == "sqrt") continue;
-    //if ( benchmark != "ctrl" ) continue;
+    if ( benchmark != "voter" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -56,6 +55,9 @@ int main()
     patgen_params ps;
     patgen_stats st;
 
+    ps.num_random_pattern = 1000;
+    ps.observability_type1 = true;
+    ps.observability_type2 = false;
     ps.random_seed = 1689;
     ps.progress = false;
 

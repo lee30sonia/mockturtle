@@ -169,10 +169,10 @@ kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& n
 such that under input assignment `pattern` the value of `n` doesn't affect outputs of `roots`. 
 Returns true if is observable. (at least one PO is affected) */
 template<class Ntk>
-bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool> const& pattern, std::vector<node<Ntk>> const& roots, unordered_node_map<bool, Ntk>& tts )
+bool pattern_is_observable( Ntk const& ntk, node<Ntk> const& n, std::vector<bool> const& pattern, std::vector<node<Ntk>> const& roots/*, unordered_node_map<bool, Ntk>& tts*/ )
 {
   default_simulator<bool> sim(pattern);
-  //unordered_node_map<bool, Ntk> tts(ntk);
+  unordered_node_map<bool, Ntk> tts(ntk);
   unordered_node_map<bool, Ntk> ttsNOT(ntk);
   simulate_nodes( ntk, tts, sim );
   simulate_nodes( ntk, ttsNOT, sim ); // copying doesn't work for unordered_node_map<bool, Ntk>, not sure why
