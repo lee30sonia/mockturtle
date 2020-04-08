@@ -145,5 +145,15 @@ namespace percy
             solver_init_activities(solver);
         }
 
+        void rollback()
+        {
+            pabc::sat_solver_rollback(solver);
+        }
+
+        void bookmark()
+        {
+            pabc::sat_solver_bookmark(solver);
+        }
+
     };
 }
