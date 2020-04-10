@@ -238,6 +238,25 @@ private:
     if ( !top_most && ( ntk.is_pi( n ) || ntk.fanout_size( n ) > 0 ) )
       return;
 
+#if 0
+    if ( !top_most && ntk.is_pi( n ) )
+      return;
+    if ( !top_most ) /* if all the fanouts are dangling, it is still in MFFC */
+    {
+      bool all_dangling = true;
+      ntk.foreach_fanout( n, [&]( const auto& fo ){
+        if ( ntk.fanout_size( fo ) > 0 )
+        {
+          all_dangling = false;
+          return false; /* break loop */
+        }
+        return true;
+      });
+      if ( !all_dangling )
+        return;
+    }
+#endif
+
     /* recurse on children */
     ntk.foreach_fanin( n, [&]( const auto& f ){
         node_mffc_cone_rec( ntk.get_node( f ), cone, false );
@@ -788,8 +807,6 @@ private:
           {
             if ( validate_one() )
               return g;
-            else
-              continue;
           }
           else 
           {
@@ -845,8 +862,6 @@ private:
           {
             if ( validate_one() )
               return g;
-            else
-              continue;
           }
           else 
           {
