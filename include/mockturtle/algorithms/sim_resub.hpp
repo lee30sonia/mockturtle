@@ -64,6 +64,9 @@ struct simresub_params
   /*! \brief Maximum fanout of a node to be considered as divisor. */
   uint32_t skip_fanout_limit_for_divisors{100};
 
+  /*! \brief Whether to save generated patterns into file. */
+  std::optional<std::string> write_pats{};
+
   /*! \brief Show progress. */
   bool progress{false};
 
@@ -275,7 +278,7 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table> const& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table>& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
       tts( ntk ), sim( sim ), literals( node_literals( ntkbase ) )
   {
@@ -820,7 +823,7 @@ private:
   uint32_t last_gain{0};
 
   TT tts;
-  partial_simulator<kitty::partial_truth_table> sim;
+  partial_simulator<kitty::partial_truth_table>& sim;
 
   node_map<uint32_t, NtkBase> literals;
   percy::bsat_wrapper solver;
@@ -835,7 +838,7 @@ private:
 } /* namespace detail */
 
 template<class Ntk>
-void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table> const& sim, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
+void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table>& sim, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
 {
   /* TODO: check if basetype of ntk is aig */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -864,6 +867,12 @@ void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table>
 
   detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, detail::substitue_fn<Ntk> );
   p.run();
+
+  if ( ps.write_pats )
+  {
+    sim.write_patterns( *(ps.write_pats) );
+  }
+
   if ( ps.verbose )
     st.report();
 

@@ -43,6 +43,7 @@
 #include <kitty/operators.hpp>
 #include <kitty/static_truth_table.hpp>
 #include <kitty/partial_truth_table.hpp>
+#include <kitty/print.hpp>
 
 namespace mockturtle
 {
@@ -267,6 +268,8 @@ public:
       patterns.emplace_back( line.length() * 4 );
       kitty::create_from_hex_string( patterns.back(), line );
     }
+
+    in.close();
   }
 
   kitty::partial_truth_table compute_constant( bool value ) const
@@ -295,6 +298,16 @@ public:
     }
 
     return false; /* just keep this to align with the dynamic_truth_table version */
+  }
+
+  void write_patterns( const std::string& filename )
+  {
+    std::ofstream out( filename, std::ofstream::out );
+    for ( auto i = 0u; i < patterns.size(); ++i )
+    {
+      out << kitty::to_hex( patterns.at( i ) ) << "\n";
+    }
+    out.close();
   }
 
 private:

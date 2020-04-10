@@ -44,7 +44,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#const", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt ) )
+  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
     //if ( benchmark != "cavlc" ) continue;
 
@@ -61,18 +61,20 @@ int main()
     ps.max_inserts = 1u;
     ps.progress = false;
 
-    bool useExternal = false;
+    bool useExternal = true;
+    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX"
+    //ps.write_pats = "cex/" + benchmark + ".pat";
+
     patgen_stats st_pat;
     partial_simulator<kitty::partial_truth_table> sim(1,1);
     if ( useExternal )
     {
-      if ( benchmark == "sin" || benchmark == "voter" ) continue; // don't have abc patterns
-      sim = partial_simulator<kitty::partial_truth_table>( "pats/" + benchmark + ".pat" );
+      sim = partial_simulator<kitty::partial_truth_table>( pat_path + benchmark + ".pat" );
       st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
     }
     else
     {
-      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000}, &st_pat );
+      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 256}, &st_pat );
       aig = cleanup_dangling( aig );
     }
 

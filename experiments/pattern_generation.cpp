@@ -45,7 +45,7 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
-    if ( benchmark != "voter" ) continue;
+    //if ( benchmark != "voter" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -57,7 +57,8 @@ int main()
 
     ps.num_random_pattern = 1000;
     ps.observability_type1 = true;
-    ps.observability_type2 = false;
+    ps.observability_type2 = true;
+    ps.write_pats = "patgen/" + benchmark + ".pat";
     ps.random_seed = 1689;
     ps.progress = false;
 

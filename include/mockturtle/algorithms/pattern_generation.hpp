@@ -61,6 +61,9 @@ struct patgen_params
   /*! \brief Whether to check and re-generate type 2 observable patterns. */
   bool observability_type2{false};
 
+  /*! \brief Whether to save generated patterns into file. */
+  std::optional<std::string> write_pats{};
+
   /*! \brief Show progress. */
   bool progress{false};
 
@@ -418,6 +421,11 @@ partial_simulator<kitty::partial_truth_table> pattern_generation( Ntk& ntk, patg
 
   detail::patgen_impl p( fanout_view, ps, st );
   p.run();
+
+  if ( ps.write_pats )
+  {
+    p.sim.write_patterns( *(ps.write_pats) );
+  }
 
   if ( ps.verbose )
     st.report();
