@@ -155,5 +155,15 @@ namespace percy
             pabc::sat_solver_bookmark(solver);
         }
 
+        void set_polarity(std::vector<uint32_t> const& vars)
+        {
+            pabc::sat_solver_set_polarity( solver, (int*)(const_cast<uint32_t*>(vars.data())), vars.size() );
+        }
+
+        void set_random(bool fRandom)
+        {
+            pabc::sat_solver_set_random(solver, fRandom);
+        }
+
     };
 }
