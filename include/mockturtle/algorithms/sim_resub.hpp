@@ -645,7 +645,7 @@ private:
         solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
         solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
         solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
-        assumptions.emplace_back( lit_not_cond( nlit, !phase ) );
+        lits_neq.emplace_back( lit_not_cond( nlit, !phase ) );
         
         if ( ps.num_solve == 1 )
         {
@@ -656,7 +656,7 @@ private:
         }
         else 
         {
-          if ( assumptions.size() == ps.num_solve )
+          if ( lits_neq.size() == ps.num_solve )
             validate();
           return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
         }
@@ -668,11 +668,13 @@ private:
 
   bool validate_one()
   {
+    std::vector<pabc::lit> assumptions( 1 );
+    assumptions[0] = lits_neq[0];
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + assumptions.size(), 0 );
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
     });
 
-    assumptions.clear();
+    lits_neq.clear();
 
     if ( res == percy::synth_result::success ) /* CEX found */
     {
@@ -685,15 +687,22 @@ private:
   void validate()
   {
     std::vector<uint32_t> pols;
-    for ( auto i = 0u; i < assumptions.size(); ++i )
+    for ( auto i = 0u; i < lits_neq.size(); ++i )
     {
-      if ( !lit_is_complemented( assumptions.at( i ) ) )
-        pols.push_back( lit2var( assumptions.at( i ) ) );
+      if ( !lit_is_complemented( lits_neq.at( i ) ) )
+        pols.push_back( lit2var( lits_neq.at( i ) ) );
     }
     solver.set_polarity( pols );
 
+    solver.add_var();
+    auto nlit = make_lit( solver.nr_vars()-1 );
+    lits_neq.push_back( nlit );
+    solver.add_clause( lits_neq );
+    std::vector<pabc::lit> assumptions( 1 );
+    assumptions[0] = lit_not( nlit );
+
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + assumptions.size(), 0 );
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
     });
 
     if ( res == percy::synth_result::success ) /* CEX found */
@@ -701,21 +710,54 @@ private:
       found_cex();
       refine();
     }
+
+    for ( auto i = 0u; i < candidates.size(); ++i )
+    {
+      const auto old = candidates.at( i ).first;
+      const auto nnew = candidates.at( i ).second;
+
+      /* if the substituted node is used to substitue other node, use the new signal instead */
+      for ( auto j = 0u; j < candidates.size(); ++j )
+      {
+        if ( i == j ) continue;
+        if ( old == ntk.get_node( candidates.at( j ).second ) )
+          candidates.at( j ).second = ntk.is_complemented( candidates.at( j ).second ) ? !nnew : nnew;
+      }
+    }
     
     for ( auto i = 0u; i < candidates.size(); ++i )
     {
+      /* check if substitution is legal in graph structure */
+      auto const& n = candidates.at( i ).first;
+      auto const& g = candidates.at( i ).second;
+      if ( ntk.level( ntk.get_node( g ) ) > ntk.level( n ) )
+      {
+        /* check later substitutions to replace g back with n */
+        for ( auto j = i + 1; j < candidates.size(); ++j )
+        {
+          if ( ntk.get_node( candidates.at( j ).second ) == ntk.get_node( g ) )
+            candidates.at( j ).second = ( ntk.is_complemented( g ) ^ ntk.is_complemented( candidates.at( j ).second ) ) ? !ntk.make_signal( n ): ntk.make_signal( n );
+        }
+        /* give up this substitution */
+        continue;
+      }
+
       /* update network */
       call_with_stopwatch( st.time_callback, [&]() {
-        callback( ntkbase, candidates.at( i ).first, candidates.at( i ).second );
+        callback( ntkbase, n, g );
       });
     }
     candidates.clear();
-    assumptions.clear();
+    lits_neq.clear();
   }
 
   void refine()
   {
-    candidates.clear();
+    candidates.clear(); return;
+    for ( auto i = 0u; i < lits_neq.size(); ++i )
+    {
+
+    }    
   }
 
   void collect_unate_divisors( node const& root, uint32_t required )
@@ -801,7 +843,7 @@ private:
           auto nlit = make_lit( solver.nr_vars()-1 );
           solver.add_clause( {l_r, l_g, nlit} );
           solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
-          assumptions.emplace_back( lit_not( nlit ) );
+          lits_neq.emplace_back( lit_not( nlit ) );
 
           if ( ps.num_solve == 1 )
           {
@@ -810,7 +852,7 @@ private:
           }
           else 
           {
-            if ( assumptions.size() == ps.num_solve )
+            if ( lits_neq.size() == ps.num_solve )
               validate();
             return g;
           }
@@ -856,7 +898,7 @@ private:
           auto nlit = make_lit( solver.nr_vars()-1 );
           solver.add_clause( {l_r, l_g, nlit} );
           solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
-          assumptions.emplace_back( lit_not( nlit ) );
+          lits_neq.emplace_back( lit_not( nlit ) );
 
           if ( ps.num_solve == 1 )
           {
@@ -865,7 +907,7 @@ private:
           }
           else 
           {
-            if ( assumptions.size() == ps.num_solve )
+            if ( lits_neq.size() == ps.num_solve )
               validate();
             return g;
           }
@@ -893,7 +935,7 @@ private:
   partial_simulator<kitty::partial_truth_table>& sim;
 
   node_map<uint32_t, NtkBase> literals;
-  std::vector<pabc::lit> assumptions;
+  std::vector<uint32_t> lits_neq;
   std::vector<std::pair<node, signal>> candidates;
   percy::bsat_wrapper solver;
 
