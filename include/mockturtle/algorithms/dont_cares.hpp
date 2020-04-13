@@ -40,6 +40,7 @@
 #include "../algorithms/simulation.hpp"
 #include "../traits.hpp"
 #include "../utils/node_map.hpp"
+#include "../utils/include/percy.hpp"
 #include "../views/fanout_view.hpp"
 #include "../views/topo_view.hpp"
 #include "../views/window_view.hpp"
@@ -47,7 +48,6 @@
 #include <fmt/format.h>
 #include <kitty/bit_operations.hpp>
 #include <kitty/dynamic_truth_table.hpp>
-#include <percy/solvers/bsat2.hpp>
 
 namespace mockturtle
 {
@@ -76,7 +76,7 @@ kitty::dynamic_truth_table satisfiability_dont_cares( Ntk const& ntk, std::vecto
   const auto tts = simulate_nodes<kitty::dynamic_truth_table>( window_ntk, sim );
 
   /* first create care and then invert */
-  kitty::dynamic_truth_table care( leaves.size() );
+  kitty::dynamic_truth_table care( static_cast<uint32_t>( leaves.size() ) );
   for ( auto i = 0u; i < ( 1u << window_ntk.num_pis() ); ++i )
   {
     uint32_t entry{0u};
@@ -118,7 +118,7 @@ kitty::dynamic_truth_table observability_dont_cares( Ntk const& ntk, node<Ntk> c
   node_to_value1[n] = ~sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( false ) ) ) );
   simulate_nodes( ntk, node_to_value1, sim );
 
-  kitty::dynamic_truth_table care( leaves.size() );
+  kitty::dynamic_truth_table care( static_cast<uint32_t>( leaves.size() ) );
   for ( const auto& r : roots )
   {
     care |= node_to_value0[r] ^ node_to_value1[r];
@@ -147,7 +147,7 @@ void clearTFO_rec( Ntk const& ntk, unordered_node_map<TT, Ntk>& ttsNOT, node<Ntk
 /* Compute the don't care input patterns in the partial simulator `sim` of node `n` with respect to `roots`
 such that under these PI patterns the value of n doesn't affect outputs of roots. */
 template<class Ntk>
-kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& ntk, node<Ntk> const& n, partial_simulator<kitty::partial_truth_table> const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
+kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& ntk, node<Ntk> const& n, partial_simulator const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
 {
   ntk.incr_trav_id();
 
