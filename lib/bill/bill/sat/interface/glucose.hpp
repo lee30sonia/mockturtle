@@ -118,8 +118,7 @@ public:
 	result::states solve(std::vector<lit_type> const& assumptions = {},
 	                     uint32_t conflict_limit = 0)
 	{
-		if (!assumptions.empty()) { state_ = result::states::dirty; }
-		if (state_ != result::states::dirty && assumptions.empty()) {
+        if (state_ != result::states::dirty && assumptions.empty()) {
 			return state_;
 		}
 
