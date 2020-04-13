@@ -147,7 +147,7 @@ void clearTFO_rec( Ntk const& ntk, unordered_node_map<TT, Ntk>& ttsNOT, node<Ntk
 /* Compute the don't care input patterns in the partial simulator `sim` of node `n` with respect to `roots`
 such that under these PI patterns the value of n doesn't affect outputs of roots. */
 template<class Ntk>
-kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& ntk, node<Ntk> const& n, partial_simulator<kitty::partial_truth_table> const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
+kitty::partial_truth_table observability_dont_cares_without_window( Ntk const& ntk, node<Ntk> const& n, partial_simulator const& sim, unordered_node_map<kitty::partial_truth_table, Ntk> const& tts, std::vector<node<Ntk>> const& roots )
 {
   ntk.incr_trav_id();
 
