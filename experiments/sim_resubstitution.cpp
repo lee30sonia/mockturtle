@@ -46,7 +46,7 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
-    //if ( benchmark != "cavlc" ) continue;
+    //if ( benchmark != "sin" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -60,11 +60,12 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.num_solve = 1;
+    ps.num_solve = 2;
+    ps.num_candidates = 3;
 
     bool useExternal = true;
-    auto pat_path = "patgen/"; // "patABC/" "patgen/" "patCEX"
-    //ps.write_pats = "cex/" + benchmark + ".pat";
+    auto pat_path = "patCEXmore/"; // "patABC/" "patgen/" "patCEX"
+    ps.write_pats = "patCEXmore/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator<kitty::partial_truth_table> sim(1,1);
