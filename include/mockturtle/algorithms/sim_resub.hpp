@@ -300,7 +300,7 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator<kitty::partial_truth_table>& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
       tts( ntk ), sim( sim ), literals( node_literals( ntkbase ) )
   {
@@ -932,7 +932,7 @@ private:
   uint32_t last_gain{0};
 
   TT tts;
-  partial_simulator<kitty::partial_truth_table>& sim;
+  partial_simulator& sim;
 
   node_map<uint32_t, NtkBase> literals;
   std::vector<uint32_t> lits_neq;
@@ -949,7 +949,7 @@ private:
 } /* namespace detail */
 
 template<class Ntk>
-void sim_resubstitution( Ntk& ntk, partial_simulator<kitty::partial_truth_table>& sim, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
+void sim_resubstitution( Ntk& ntk, partial_simulator& sim, simresub_params const& ps = {}, simresub_stats* pst = nullptr )
 {
   /* TODO: check if basetype of ntk is aig */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );

@@ -63,14 +63,14 @@ int main()
     ps.num_solve = 1;
 
     bool useExternal = true;
-    auto pat_path = "patgen/"; // "patABC/" "patgen/" "patCEX"
+    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX"
     //ps.write_pats = "cex/" + benchmark + ".pat";
 
     patgen_stats st_pat;
-    partial_simulator<kitty::partial_truth_table> sim(1,1);
+    partial_simulator sim(1,1);
     if ( useExternal )
     {
-      sim = partial_simulator<kitty::partial_truth_table>( pat_path + benchmark + ".pat" );
+      sim = partial_simulator( pat_path + benchmark + ".pat" );
       st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
     }
     else
