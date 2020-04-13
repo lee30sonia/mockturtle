@@ -147,6 +147,21 @@ bool substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal c
 };
 
 template<typename Ntk>
+bool undo_substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
+{
+  /* create the deleted node n */
+  std::vector<typename Ntk::signal> fanins;
+  ntk.foreach_fanin( n, [&]( const auto& f ){
+    fanins.emplace_back( f );
+  });
+  auto const new_n = ntk.create_and( fanins[0], fanins[1] );
+
+  ntk.substitute_node( ntk.get_node( g ), ntk.is_complemented( g ) ? !new_n : new_n );
+  //std::cout<<"undo: substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
+  return true;
+};
+
+template<typename Ntk>
 bool report_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
 {
   //(void)ntk; (void)n; (void)g;
@@ -300,8 +315,8 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
-    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, resub_callback_t const& callback = substitue_fn<NtkBase>, resub_callback_t const& undo_callback = undo_substitue_fn<NtkBase> )
+    : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ), undo_callback( undo_callback ),
       tts( ntk ), sim( sim ), literals( node_literals( ntkbase ) )
   {
     st.initial_size = ntk.num_gates(); 
@@ -651,11 +666,14 @@ private:
         {
           if ( validate_one() )
             return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
-          else
-            continue;
         }
         else 
         {
+          /* update network */
+          call_with_stopwatch( st.time_callback, [&]() {
+            callback( ntkbase, root, phase ? !ntk.make_signal( d ) : ntk.make_signal( d ) );
+          });
+
           if ( lits_neq.size() == ps.num_solve )
             validate();
           return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
@@ -679,13 +697,21 @@ private:
     if ( res == percy::synth_result::success ) /* CEX found */
     {
       found_cex();
+      candidates.clear();
       return false;
     }
+    /* update network */
+    call_with_stopwatch( st.time_callback, [&]() {
+      callback( ntkbase, candidates[0].first, candidates[0].second );
+    });
+    candidates.clear();
     return true;
   }
 
   void validate()
   {
+    if ( candidates.size() == 0u ) return;
+
     std::vector<uint32_t> pols;
     for ( auto i = 0u; i < lits_neq.size(); ++i )
     {
@@ -698,6 +724,7 @@ private:
     auto nlit = make_lit( solver.nr_vars()-1 );
     lits_neq.push_back( nlit );
     solver.add_clause( lits_neq );
+    lits_neq.pop_back();
     std::vector<pabc::lit> assumptions( 1 );
     assumptions[0] = lit_not( nlit );
 
@@ -710,54 +737,34 @@ private:
       found_cex();
       refine();
     }
-
-    for ( auto i = 0u; i < candidates.size(); ++i )
+    else
     {
-      const auto old = candidates.at( i ).first;
-      const auto nnew = candidates.at( i ).second;
-
-      /* if the substituted node is used to substitue other node, use the new signal instead */
-      for ( auto j = 0u; j < candidates.size(); ++j )
-      {
-        if ( i == j ) continue;
-        if ( old == ntk.get_node( candidates.at( j ).second ) )
-          candidates.at( j ).second = ntk.is_complemented( candidates.at( j ).second ) ? !nnew : nnew;
-      }
+      candidates.clear();
+      lits_neq.clear();
     }
-    
-    for ( auto i = 0u; i < candidates.size(); ++i )
-    {
-      /* check if substitution is legal in graph structure */
-      auto const& n = candidates.at( i ).first;
-      auto const& g = candidates.at( i ).second;
-      if ( ntk.level( ntk.get_node( g ) ) > ntk.level( n ) )
-      {
-        /* check later substitutions to replace g back with n */
-        for ( auto j = i + 1; j < candidates.size(); ++j )
-        {
-          if ( ntk.get_node( candidates.at( j ).second ) == ntk.get_node( g ) )
-            candidates.at( j ).second = ( ntk.is_complemented( g ) ^ ntk.is_complemented( candidates.at( j ).second ) ) ? !ntk.make_signal( n ): ntk.make_signal( n );
-        }
-        /* give up this substitution */
-        continue;
-      }
-
-      /* update network */
-      call_with_stopwatch( st.time_callback, [&]() {
-        callback( ntkbase, n, g );
-      });
-    }
-    candidates.clear();
-    lits_neq.clear();
   }
 
   void refine()
   {
-    candidates.clear(); return;
-    for ( auto i = 0u; i < lits_neq.size(); ++i )
+    assert( candidates.size() == lits_neq.size() );
+    auto const size_before = lits_neq.size();
+    int j = 0;
+    for ( int i = 0; i < int( candidates.size() ); ++i )
     {
-
-    }    
+      if ( solver.var_value( lit2var( lits_neq[j] ) ) ^ lit_is_complemented( lits_neq[j] ) )
+      {
+        /* undo false substitution */
+        call_with_stopwatch( st.time_callback, [&]() {
+          undo_callback( ntkbase, candidates[i].first, candidates[i].second );
+        });
+        lits_neq.erase( lits_neq.begin() + j );
+        candidates.erase( candidates.begin() + i );
+        --j; --i;
+      }
+      ++j;
+    }
+    assert( lits_neq.size() < size_before );
+    validate();
   }
 
   void collect_unate_divisors( node const& root, uint32_t required )
@@ -852,6 +859,11 @@ private:
           }
           else 
           {
+            /* update network */
+            call_with_stopwatch( st.time_callback, [&]() {
+              callback( ntkbase, root, g );
+            });
+
             if ( lits_neq.size() == ps.num_solve )
               validate();
             return g;
@@ -907,6 +919,11 @@ private:
           }
           else 
           {
+            /* update network */
+            call_with_stopwatch( st.time_callback, [&]() {
+              callback( ntkbase, root, g );
+            });
+
             if ( lits_neq.size() == ps.num_solve )
               validate();
             return g;
@@ -925,7 +942,9 @@ private:
   simresub_params const& ps;
   simresub_stats& st;
 
+  /* callback functions to substitute and to undo wrong substitution */
   resub_callback_t const& callback;
+  resub_callback_t const& undo_callback;
 
   /* temporary statistics for progress bar */
   uint32_t num_candidates{0};
