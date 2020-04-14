@@ -386,13 +386,13 @@ private:
 
   TT tts;
 public:
-  partial_simulator<kitty::partial_truth_table> sim;
+  partial_simulator sim;
 };
 
 } /* namespace detail */
 
 template<class Ntk>
-partial_simulator<kitty::partial_truth_table> pattern_generation( Ntk& ntk, patgen_params const& ps = {}, patgen_stats* pst = nullptr )
+partial_simulator pattern_generation( Ntk& ntk, patgen_params const& ps = {}, patgen_stats* pst = nullptr )
 {
   /* TODO: check if basetype of ntk is aig */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
