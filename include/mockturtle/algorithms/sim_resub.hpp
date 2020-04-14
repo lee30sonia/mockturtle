@@ -389,14 +389,6 @@ public:
         /* update progress bar */
         num_candidates++;
         st.estimated_gain += last_gain;
-
-        if ( ps.num_solve == 1 )
-        {
-          /* update network */
-          call_with_stopwatch( st.time_callback, [&]() {
-            callback( ntkbase, n, *g );
-          });
-        }
         
         return true; /* next */
       });
@@ -696,6 +688,7 @@ private:
 
     if ( res == percy::synth_result::success ) /* CEX found */
     {
+      //std::cout<<"cex found for substituting node "<<unsigned(candidates[0].first)<<" with node "<<unsigned(ntk.get_node(candidates[0].second))<<std::endl;
       found_cex();
       candidates.clear();
       return false;
