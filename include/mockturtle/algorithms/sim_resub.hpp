@@ -67,6 +67,10 @@ struct simresub_params
   /*! \brief Whether to save generated patterns into file. */
   std::optional<std::string> write_pats{};
 
+  bool use_odc{false};
+
+  uint32_t odc_solve_limit{5};
+
   /*! \brief Show progress. */
   bool progress{false};
 
@@ -587,6 +591,63 @@ private:
     return std::nullopt;
   }
 
+  bool found_cex( node const& n, std::vector<pabc::lit>& assumptions )
+  {
+    /* return true if it is actually a legal substitution */
+    std::vector<bool> pattern;
+    for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+      pattern.push_back(solver.var_value( j ));
+    sim.add_pattern(pattern);
+    ++st.num_cex;
+
+    /* re-simulate */
+    call_with_stopwatch( st.time_sim, [&]() {
+      simulate_nodes<Ntk>( ntk, tts, sim );
+    });
+
+    if ( !ps.use_odc )
+      return false;
+
+    std::vector<node> POs( ntk.num_pos() );
+    ntk.foreach_po( [&]( auto const& f, auto i ){ POs[i] = ntk.get_node( f ); });
+    if ( pattern_is_observable( ntk, n, pattern, POs ) )
+      return false;
+
+    std::cout<<"cex is not observable! \n";
+    solver.bookmark();
+    auto const res = solve_again( pattern, n, assumptions, POs, 1 );
+    solver.rollback();
+    return res;
+  }
+
+  bool solve_again( std::vector<bool>& pattern, node const& n, std::vector<pabc::lit>& assumptions, std::vector<node> const& POs, uint32_t counter )
+  {
+    /* block this pattern */
+    std::vector<uint32_t> clause( ntk.num_pis() );
+    for ( auto i = 0u; i < ntk.num_pis(); ++i )
+      clause[i] = make_lit( i + 1, pattern[i] );
+    solver.add_clause( clause );
+
+    const auto res = call_with_stopwatch( st.time_sat, [&]() {
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+    });
+    if ( res == percy::synth_result::success )
+    {
+      if ( counter >= ps.odc_solve_limit )
+      {
+        std::cout<<"odc_solve_limit reached\n";
+        return false;
+      }
+      for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+        pattern[j-1] = solver.var_value( j ); 
+      if ( pattern_is_observable( ntk, n, pattern, POs ) )
+        return false;
+      return solve_again( pattern, n, assumptions, POs, counter + 1 );
+    }
+    std::cout<<"ODC utilized with "<<(counter+1)<<" more solves\n";
+    return true;
+  }
+
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
   {
     (void)required;
@@ -614,16 +675,8 @@ private:
         
         if ( res == percy::synth_result::success ) /* CEX found */
         {
-          std::vector<bool> pattern;
-          for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-            pattern.push_back(solver.var_value( j ));
-          sim.add_pattern(pattern);
-          ++st.num_cex;
-
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
-          });
+          if ( found_cex( root, assumptions ) )
+            return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
         }
         else /* proved equal */
           return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
@@ -709,16 +762,24 @@ private:
           
           if ( res == percy::synth_result::success ) /* CEX found */
           {
-            std::vector<bool> pattern;
-            for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-              pattern.push_back(solver.var_value( j ));
-            sim.add_pattern(pattern);
-            ++st.num_cex;
-  
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-            });
+            if ( found_cex( root, assumptions ) )
+            {
+              //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
+              auto g = ntk.create_or( s0, s1 );
+              /* update CNF */
+              literals.resize();
+              solver.add_var();
+              literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
+              auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
+              solver.add_clause( {lit_not( l_s0 ), l_g} );
+              solver.add_clause( {lit_not( l_s1 ), l_g} );
+              solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
+              /* re-simulate */
+              call_with_stopwatch( st.time_sim, [&]() {
+                  simulate_nodes<Ntk>( ntk, tts, sim );
+                });
+              return g;
+            }
           }
           else /* proved substitution */
           {
@@ -773,16 +834,24 @@ private:
 
           if ( res == percy::synth_result::success ) /* CEX found */
           {
-            std::vector<bool> pattern;
-            for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-              pattern.push_back(solver.var_value( j ));
-            sim.add_pattern(pattern);
-            ++st.num_cex;
-  
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-            });
+            if ( found_cex( root, assumptions ) )
+            {
+              //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
+              auto g = ntk.create_and( s0, s1 );
+              /* update CNF */
+              literals.resize();
+              solver.add_var();
+              literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
+              auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
+              solver.add_clause( {lit_not( l_g ), l_s0} );
+              solver.add_clause( {lit_not( l_g ), l_s1} );
+              solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
+              /* re-simulate */
+              call_with_stopwatch( st.time_sim, [&]() {
+                  simulate_nodes<Ntk>( ntk, tts, sim );
+                });
+              return g;
+            }
           }
           else /* proved substitution */
           {

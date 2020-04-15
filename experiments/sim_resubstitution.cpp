@@ -60,9 +60,11 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
+    ps.use_odc = true;
+    ps.odc_solve_limit = 10u;
 
     bool useExternal = true;
-    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX"
+    auto pat_path = "patgen/"; // "patABC/" "patgen/" "patCEX"
     //ps.write_pats = "cex/" + benchmark + ".pat";
 
     patgen_stats st_pat;
