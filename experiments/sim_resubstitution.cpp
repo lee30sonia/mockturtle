@@ -46,7 +46,7 @@ int main()
 
   for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
-    //if ( benchmark != "cavlc" ) continue;
+    //if ( benchmark != "voter" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -60,7 +60,8 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.num_solve = 1;
+    ps.num_solve = 1000;
+    ps.benchmark = benchmark;
 
     bool useExternal = true;
     auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX"
@@ -75,7 +76,7 @@ int main()
     }
     else
     {
-      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 256}, &st_pat );
+      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000}, &st_pat );
       aig = cleanup_dangling( aig );
     }
 

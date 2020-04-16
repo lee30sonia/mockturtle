@@ -41,6 +41,7 @@
 #include <kitty/partial_truth_table.hpp>
 //#include <kitty/print.hpp>
 //#include <kitty/operators.hpp>
+#include <mockturtle/io/write_bench.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
 #include "cleanup.hpp"
@@ -78,6 +79,8 @@ struct simresub_params
 
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
   uint32_t max_pis{8};
+
+  std::string benchmark{""};
 };
 
 struct simresub_stats
@@ -137,6 +140,31 @@ struct simresub_stats
 
 namespace detail
 {
+
+template<class Ntk>
+bool abc_cec( Ntk const& ntk, std::string const& benchmark, stopwatch<>::duration& time_sat )
+{
+  mockturtle::write_bench( ntk, "/tmp/test.bench" );
+  //std::string command = fmt::format( "abc -q \"cec -n {} /tmp/test.bench\"", "../experiments/benchmarks/" + benchmark + ".aig" );
+  std::string command = fmt::format( "abc -q \"read_bench /tmp/test.bench; &get; &cec {}\"", "../experiments/benchmarks/" + benchmark + ".aig" );
+
+const auto result = call_with_stopwatch( time_sat, [&]() {
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+  return result;
+});
+  
+  return result.size() >= 23 && result.substr( 0u, 23u ) == "Networks are equivalent";
+}
 
 template<typename Ntk>
 bool substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::signal const& g )
@@ -646,16 +674,17 @@ private:
 
         candidates.emplace_back( std::make_pair( root, phase ? !ntk.make_signal( d ) : ntk.make_signal( d ) ) );
 
-        solver.add_var();
-        auto nlit = make_lit( solver.nr_vars()-1 );
-        solver.add_clause( {literals[root], literals[d], nlit} );
-        solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
-        solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
-        solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
-        lits_neq.emplace_back( lit_not_cond( nlit, !phase ) );
+        
         
         if ( ps.num_solve == 1 )
         {
+          solver.add_var();
+          auto nlit = make_lit( solver.nr_vars()-1 );
+          solver.add_clause( {literals[root], literals[d], nlit} );
+          solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
+          solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
+          solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
+          lits_neq.emplace_back( lit_not_cond( nlit, !phase ) );
           if ( validate_one() )
             return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
         }
@@ -705,28 +734,30 @@ private:
   {
     if ( candidates.size() == 0u ) return;
 
-    std::vector<uint32_t> pols;
-    for ( auto i = 0u; i < lits_neq.size(); ++i )
+    //std::vector<uint32_t> pols;
+    //for ( auto i = 0u; i < lits_neq.size(); ++i )
+    //{
+    //  if ( !lit_is_complemented( lits_neq.at( i ) ) )
+    //    pols.push_back( lit2var( lits_neq.at( i ) ) );
+    //}
+    //solver.set_polarity( pols );
+//
+    //solver.add_var();
+    //auto nlit = make_lit( solver.nr_vars()-1 );
+    //lits_neq.push_back( nlit );
+    //solver.add_clause( lits_neq );
+    //lits_neq.pop_back();
+    //std::vector<pabc::lit> assumptions( 1 );
+    //assumptions[0] = lit_not( nlit );
+//
+    //const auto res = call_with_stopwatch( st.time_sat, [&]() {
+    //  return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+    //});
+
+    if ( !abc_cec( ntk, ps.benchmark, st.time_sat ) )
+    //if ( res == percy::synth_result::success ) /* CEX found */
     {
-      if ( !lit_is_complemented( lits_neq.at( i ) ) )
-        pols.push_back( lit2var( lits_neq.at( i ) ) );
-    }
-    solver.set_polarity( pols );
-
-    solver.add_var();
-    auto nlit = make_lit( solver.nr_vars()-1 );
-    lits_neq.push_back( nlit );
-    solver.add_clause( lits_neq );
-    lits_neq.pop_back();
-    std::vector<pabc::lit> assumptions( 1 );
-    assumptions[0] = lit_not( nlit );
-
-    const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
-    });
-
-    if ( res == percy::synth_result::success ) /* CEX found */
-    {
+      std::cout<<"cec = false\n";
       found_cex();
       refine();
     }
@@ -739,25 +770,30 @@ private:
 
   void refine()
   {
-    assert( candidates.size() == lits_neq.size() );
-    auto const size_before = lits_neq.size();
-    int j = 0;
-    for ( int i = 0; i < int( candidates.size() ); ++i )
-    {
-      if ( solver.var_value( lit2var( lits_neq[j] ) ) ^ lit_is_complemented( lits_neq[j] ) )
-      {
-        /* undo false substitution */
-        call_with_stopwatch( st.time_callback, [&]() {
-          undo_callback( ntkbase, candidates[i].first, candidates[i].second );
-        });
-        lits_neq.erase( lits_neq.begin() + j );
-        candidates.erase( candidates.begin() + i );
-        --j; --i;
-      }
-      ++j;
-    }
-    assert( lits_neq.size() < size_before );
-    validate();
+    candidates.clear();
+    lits_neq.clear();
+    return;
+
+
+    //assert( candidates.size() == lits_neq.size() );
+    //auto const size_before = lits_neq.size();
+    //int j = 0;
+    //for ( int i = 0; i < int( candidates.size() ); ++i )
+    //{
+    //  if ( solver.var_value( lit2var( lits_neq[j] ) ) ^ lit_is_complemented( lits_neq[j] ) )
+    //  {
+    //    /* undo false substitution */
+    //    call_with_stopwatch( st.time_callback, [&]() {
+    //      undo_callback( ntkbase, candidates[i].first, candidates[i].second );
+    //    });
+    //    lits_neq.erase( lits_neq.begin() + j );
+    //    candidates.erase( candidates.begin() + i );
+    //    --j; --i;
+    //  }
+    //  ++j;
+    //}
+    //assert( lits_neq.size() < size_before );
+    //validate();
   }
 
   void collect_unate_divisors( node const& root, uint32_t required )
@@ -839,14 +875,13 @@ private:
             });
           candidates.emplace_back( std::make_pair( root, g ) );
 
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
-          solver.add_clause( {l_r, l_g, nlit} );
-          solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
-          lits_neq.emplace_back( lit_not( nlit ) );
-
           if ( ps.num_solve == 1 )
           {
+            solver.add_var();
+            auto nlit = make_lit( solver.nr_vars()-1 );
+            solver.add_clause( {l_r, l_g, nlit} );
+            solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
+            lits_neq.emplace_back( lit_not( nlit ) );
             if ( validate_one() )
               return g;
           }
@@ -899,14 +934,13 @@ private:
             });
           candidates.emplace_back( std::make_pair( root, g ) );
 
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
-          solver.add_clause( {l_r, l_g, nlit} );
-          solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
-          lits_neq.emplace_back( lit_not( nlit ) );
-
           if ( ps.num_solve == 1 )
           {
+            solver.add_var();
+            auto nlit = make_lit( solver.nr_vars()-1 );
+            solver.add_clause( {l_r, l_g, nlit} );
+            solver.add_clause( {lit_not( l_r ), lit_not( l_g ), nlit} );
+            lits_neq.emplace_back( lit_not( nlit ) );
             if ( validate_one() )
               return g;
           }
