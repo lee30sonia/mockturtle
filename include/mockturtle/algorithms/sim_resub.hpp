@@ -648,18 +648,31 @@ private:
     return true;
   }
 
+  kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
+  {
+    if ( !ps.use_odc )
+      return inverse? ~tts[n]: tts[n];
+
+    std::vector<node> POs( ntk.num_pos() );
+    ntk.foreach_po( [&]( auto const& f, auto i ){ POs[i] = ntk.get_node( f ); });
+    return ( inverse? ~tts[n]: tts[n] ) | observability_dont_cares_without_window( ntk, n, sim, tts, POs );
+  }
+
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
   {
     (void)required;
-    auto const& tt = tts[root];
+    auto tt = get_tt( root );
+    auto ntt = get_tt( root, true );
 
     //for ( auto i = 0u; i < num_divs; ++i )
     for ( int i = num_divs-1; i >= 0; --i )
     {
       auto const d = divs.at( i );
-      if ( tt == tts[d] || ~tt == tts[d] )
+      auto ttd = get_tt( d );
+
+      if ( tt == ttd || ntt == ttd )
       {
-        bool phase = ( ~tt == tts[d] );
+        bool phase = ( ntt == ttd );
 
         solver.add_var();
         auto nlit = make_lit( solver.nr_vars()-1 );
@@ -677,6 +690,8 @@ private:
         {
           if ( found_cex( root, assumptions ) )
             return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
+          tt = get_tt( root );
+          ntt = get_tt( root, true );
         }
         else /* proved equal */
           return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
