@@ -252,6 +252,15 @@ private:
     return ( res == percy::synth_result::success );
   }
 
+  void set_random_polarity()
+  {
+    std::vector<uint32_t> pols;
+    for ( auto i = 1u; i <= ntk.num_pis(); ++i )
+      if ( rand() % 2 )
+        pols.push_back( i );
+    solver.set_polarity( pols );
+  }
+
   void generate_more( node const& n, bool value, std::vector<std::vector<bool>> const& patterns )
   {
     solver.bookmark();
@@ -271,6 +280,7 @@ private:
     auto num_generated = patterns.size();
     while ( num_generated < ps.num_stuck_at )
     {
+      set_random_polarity();
       const auto res = call_with_stopwatch( st.time_sat, [&]() {
         return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
       });

@@ -76,7 +76,7 @@ int main()
     }
     else
     {
-      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000, .num_stuck_at = 10, .write_pats = "stuck_at_10/" + benchmark + ".pat"}, &st_pat );
+      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000, .num_stuck_at = 10, .observability_type1 = true, .write_pats = "stuck_at_10_obs/" + benchmark + ".pat"}, &st_pat );
       aig = cleanup_dangling( aig );
     }
 
