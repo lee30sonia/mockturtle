@@ -60,10 +60,10 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.use_odc = true;
+    ps.use_odc = false;
     ps.odc_solve_limit = 10u;
 
-    bool useExternal = true;
+    bool useExternal = false;
     auto pat_path = "patgen/"; // "patABC/" "patgen/" "patCEX"
     //ps.write_pats = "cex/" + benchmark + ".pat";
 
@@ -76,7 +76,7 @@ int main()
     }
     else
     {
-      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 256}, &st_pat );
+      sim = pattern_generation( aig, {.random_seed = 1689, .num_random_pattern = 1000, .num_stuck_at = 10, .write_pats = "stuck_at_10/" + benchmark + ".pat"}, &st_pat );
       aig = cleanup_dangling( aig );
     }
 
