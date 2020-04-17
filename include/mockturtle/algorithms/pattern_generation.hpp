@@ -39,6 +39,7 @@
 #include <mockturtle/algorithms/dont_cares.hpp>
 #include <kitty/partial_truth_table.hpp>
 #include <kitty/print.hpp>
+#include <kitty/bit_operations.hpp>
 #include "../utils/node_map.hpp"
 #include "cnf.hpp"
 #include "cleanup.hpp"
@@ -54,6 +55,9 @@ struct patgen_params
 
   /*! \brief Whether to substitute constant nodes. */
   bool substitute_const{true};
+
+  /*! \brief Number of patterns each node should have for both values. */
+  uint32_t num_stuck_at{1};
 
   /*! \brief Whether to check and re-generate type 1 observable patterns. */
   bool observability_type1{false};
@@ -248,6 +252,75 @@ private:
     return ( res == percy::synth_result::success );
   }
 
+  void set_random_polarity()
+  {
+    std::vector<uint32_t> pols;
+    for ( auto i = 1u; i <= ntk.num_pis(); ++i )
+      if ( rand() % 2 )
+        pols.push_back( i );
+    solver.set_polarity( pols );
+  }
+
+  void generate_more( node const& n, bool value, std::vector<std::vector<bool>> const& patterns )
+  {
+    solver.bookmark();
+    std::vector<pabc::lit> assumptions( 1 );
+    assumptions[0] = lit_not_cond( literals[n], !value );
+
+    /* add blocking clauses */
+    for ( auto i = 0u; i < patterns.size(); ++i )
+    {
+      auto const& pattern = patterns[i];
+      std::vector<uint32_t> clause;
+      for ( auto j = 0u; j < pattern.size(); ++j )
+        clause.emplace_back( lit_not_cond( make_lit( j + 1 ), pattern[j] ) );
+      solver.add_clause( clause );
+    }
+
+    auto num_generated = patterns.size();
+    while ( num_generated < ps.num_stuck_at )
+    {
+      set_random_polarity();
+      const auto res = call_with_stopwatch( st.time_sat, [&]() {
+        return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+      });
+      if ( res == percy::synth_result::success )
+      {
+        std::vector<bool> pattern;
+        for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+          pattern.push_back(solver.var_value( j ));
+
+        if ( ps.observability_type1 )
+        {
+          /* check if the found pattern is observable */ 
+          ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
+          bool observable = call_with_stopwatch( st.time_odc, [&]() { 
+              return pattern_is_observable( ntk, n, pattern, POs );
+            });
+          if ( !observable )
+          {
+            std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
+            if ( generate_observable_pattern( n, value, pattern ) )
+              std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs ) <<"\n";
+          }
+        }
+
+        sim.add_pattern(pattern);
+        ++st.num_total_patterns;
+        ++num_generated;
+
+        /* add blocking clauses */
+        std::vector<uint32_t> clause;
+        for ( auto j = 0u; j < pattern.size(); ++j )
+          clause.emplace_back( lit_not_cond( make_lit( j + 1 ), pattern[j] ) );
+        solver.add_clause( clause );
+      }
+      else break; /* can not generate more */
+    }
+
+    solver.rollback();
+  }
+
   void simulate_generate()
   {
     call_with_stopwatch( st.time_sim, [&]() {
@@ -296,6 +369,13 @@ private:
           sim.add_pattern(pattern);
           ++st.num_total_patterns;
 
+          if ( ps.num_stuck_at > 1 )
+          {
+            std::vector<std::vector<bool>> patterns;
+            patterns.emplace_back( pattern );
+            generate_more( n, value, patterns );
+          }
+
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
             simulate_nodes<Ntk>( ntk, tts, sim );
@@ -314,8 +394,58 @@ private:
           return true; /* next gate */
         }
       }
+      else if ( ps.num_stuck_at > 1 )
+      {
+        auto const& tt = tts[n];
+        if ( kitty::count_ones( tt ) < ps.num_stuck_at )
+        {
+          /* collect the one patterns */
+          std::vector<std::vector<bool>> patterns;
+          for ( auto i = 0u; i < tt.num_bits(); ++i )
+          {
+            if ( kitty::get_bit( tt, i ) )
+            {
+              patterns.emplace_back();
+              ntk.foreach_pi( [&]( auto const& pi ){ 
+                patterns.back().emplace_back( kitty::get_bit( tts[pi], i ) );
+              });
+            }
+          }
 
-      else if ( ps.observability_type2 )
+          generate_more( n, 1, patterns );
+
+          /* re-simulate */
+          call_with_stopwatch( st.time_sim, [&]() {
+            simulate_nodes<Ntk>( ntk, tts, sim );
+            zero = sim.compute_constant(false);
+          });
+        }
+        else if ( kitty::count_zeros( tt ) < ps.num_stuck_at )
+        {
+          /* collect the zero patterns */
+          std::vector<std::vector<bool>> patterns;
+          for ( auto i = 0u; i < tt.num_bits(); ++i )
+          {
+            if ( !kitty::get_bit( tt, i ) )
+            {
+              patterns.emplace_back();
+              ntk.foreach_pi( [&]( auto const& pi ){ 
+                patterns.back().emplace_back( kitty::get_bit( tts[pi], i ) );
+              });
+            }
+          }
+
+          generate_more( n, 0, patterns );
+
+          /* re-simulate */
+          call_with_stopwatch( st.time_sim, [&]() {
+            simulate_nodes<Ntk>( ntk, tts, sim );
+            zero = sim.compute_constant(false);
+          });
+        }
+      }
+
+      if ( ps.observability_type2 )
       {
         /* compute ODC */
         ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });

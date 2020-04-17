@@ -71,6 +71,8 @@ struct simresub_params
   /*! \brief Whether to save generated patterns into file. */
   std::optional<std::string> write_pats{};
 
+  bool use_odc{false};
+
   /*! \brief Show progress. */
   bool progress{false};
 
@@ -185,7 +187,7 @@ bool undo_substitue_fn( Ntk& ntk, typename Ntk::node const& n, typename Ntk::sig
   auto const new_n = ntk.create_and( fanins[0], fanins[1] );
 
   ntk.substitute_node( ntk.get_node( g ), ntk.is_complemented( g ) ? !new_n : new_n );
-  //std::cout<<"undo: substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
+  std::cout<<"undo: substitute node "<<unsigned(n)<<" with node "<<unsigned(ntk.get_node(g))<<std::endl;
   return true;
 };
 
@@ -659,22 +661,33 @@ private:
     });
   }
 
+  kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
+  {
+    if ( !ps.use_odc )
+      return inverse? ~tts[n]: tts[n];
+
+    std::vector<node> POs( ntk.num_pos() );
+    ntk.foreach_po( [&]( auto const& f, auto i ){ POs[i] = ntk.get_node( f ); });
+    return ( inverse? ~tts[n]: tts[n] ) | observability_dont_cares_without_window( ntk, n, sim, tts, POs );
+  }
+
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
   {
     (void)required;
-    auto const& tt = tts[root];
+    auto tt = get_tt( root );
+    auto ntt = get_tt( root, true );
 
     //for ( auto i = 0u; i < num_divs; ++i )
     for ( int i = num_divs-1; i >= 0; --i )
     {
       auto const d = divs.at( i );
-      if ( tt == tts[d] || ~tt == tts[d] )
+      auto ttd = get_tt( d );
+
+      if ( tt == ttd || ntt == ttd )
       {
-        bool phase = ( ~tt == tts[d] );
+        bool phase = ( ntt == ttd );
 
         candidates.emplace_back( std::make_pair( root, phase ? !ntk.make_signal( d ) : ntk.make_signal( d ) ) );
-
-        
         
         if ( ps.num_solve == 1 )
         {
@@ -687,6 +700,9 @@ private:
           lits_neq.emplace_back( lit_not_cond( nlit, !phase ) );
           if ( validate_one() )
             return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
+
+          tt = get_tt( root );
+          ntt = get_tt( root, true );
         }
         else 
         {
@@ -707,27 +723,49 @@ private:
 
   bool validate_one()
   {
-    std::vector<pabc::lit> assumptions( 1 );
-    assumptions[0] = lits_neq[0];
-    const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
-    });
-
-    lits_neq.clear();
-
-    if ( res == percy::synth_result::success ) /* CEX found */
+    if ( ps.use_odc )
     {
-      //std::cout<<"cex found for substituting node "<<unsigned(candidates[0].first)<<" with node "<<unsigned(ntk.get_node(candidates[0].second))<<std::endl;
-      found_cex();
+      lits_neq.clear();
+      call_with_stopwatch( st.time_callback, [&]() {
+        callback( ntkbase, candidates[0].first, candidates[0].second );
+      });
+      if ( !abc_cec( ntk, ps.benchmark, st.time_sat ) )
+      {
+        found_cex();
+        /* undo false substitution */
+        call_with_stopwatch( st.time_callback, [&]() {
+          undo_callback( ntkbase, candidates[0].first, candidates[0].second );
+        });
+        candidates.clear();
+        return false;
+      }
       candidates.clear();
-      return false;
+      return true;
     }
-    /* update network */
-    call_with_stopwatch( st.time_callback, [&]() {
-      callback( ntkbase, candidates[0].first, candidates[0].second );
-    });
-    candidates.clear();
-    return true;
+    else
+    {
+      std::vector<pabc::lit> assumptions( 1 );
+      assumptions[0] = lits_neq[0];
+      const auto res = call_with_stopwatch( st.time_sat, [&]() {
+        return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+      });
+
+      lits_neq.clear();
+
+      if ( res == percy::synth_result::success ) /* CEX found */
+      {
+        //std::cout<<"cex found for substituting node "<<unsigned(candidates[0].first)<<" with node "<<unsigned(ntk.get_node(candidates[0].second))<<std::endl;
+        found_cex();
+        candidates.clear();
+        return false;
+      }
+      /* update network */
+      call_with_stopwatch( st.time_callback, [&]() {
+        callback( ntkbase, candidates[0].first, candidates[0].second );
+      });
+      candidates.clear();
+      return true;
+    }
   }
 
   void validate()

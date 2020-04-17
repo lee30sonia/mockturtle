@@ -44,7 +44,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#const", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
+  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt ) )
   {
     //if ( benchmark != "voter" ) continue;
 
@@ -60,12 +60,14 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.num_solve = 1000;
+
+    ps.num_solve = 1;
     ps.benchmark = benchmark;
+    ps.use_odc = true;
 
     bool useExternal = true;
-    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX"
-    //ps.write_pats = "cex/" + benchmark + ".pat";
+    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator sim(1,1);
