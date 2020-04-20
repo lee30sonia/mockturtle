@@ -77,6 +77,8 @@ struct patgen_params
   /*! \brief Random seed. */
   std::default_random_engine::result_type random_seed{0};
 
+  uint32_t conflict_limit{1000};
+
   uint32_t ODC_failure_limit{100};
 };
 
@@ -254,7 +256,7 @@ private:
 
     /* solve and get answer */
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, 1000 );
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
     });
     if ( res == percy::synth_result::success )
     {
@@ -264,9 +266,10 @@ private:
     }
     else if ( res == percy::synth_result::failure )
     {
-      std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
-      if ( ps.substitute_const )
+      //std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
+      if ( false )//( ps.substitute_const )
       {
+        ++st.num_constant;
         auto g = ntk.get_constant( !value );
         ntk.substitute_node( n, g );
         /* re-simulate */
@@ -314,7 +317,7 @@ private:
     {
       set_random_polarity();
       const auto res = call_with_stopwatch( st.time_sat, [&]() {
-        return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+        return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
       });
       if ( res == percy::synth_result::success )
       {
@@ -322,7 +325,7 @@ private:
         for ( auto j = 1u; j <= ntk.num_pis(); ++j )
           pattern.push_back(solver.var_value( j ));
 
-        if ( ps.observability_type1 )
+        if ( false ) //( ps.observability_type1 )
         {
           /* check if the found pattern is observable */ 
           ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
@@ -372,7 +375,7 @@ private:
         assumptions[0] = lit_not_cond( literals[n], !value );
       
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+          return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
         });
         
         if ( res == percy::synth_result::success )
@@ -418,7 +421,7 @@ private:
             zero = sim.compute_constant(false);
           });
         }
-        else
+        else if ( res == percy::synth_result::failure )
         {
           //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
           ++st.num_constant;
