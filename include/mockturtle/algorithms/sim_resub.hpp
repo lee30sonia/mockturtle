@@ -79,6 +79,8 @@ struct simresub_params
 
   /*! \brief Maximum number of PIs of reconvergence-driven cuts. */
   uint32_t max_pis{8};
+
+  uint32_t conflict_limit{1000};
 };
 
 struct simresub_stats
@@ -629,7 +631,7 @@ private:
     solver.add_clause( clause );
 
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+      return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
     });
     if ( res == percy::synth_result::success )
     {
@@ -683,7 +685,7 @@ private:
         std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, !phase ) );
       
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+          return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
         });
         
         if ( res == percy::synth_result::success ) /* CEX found */
@@ -693,7 +695,7 @@ private:
           tt = get_tt( root );
           ntt = get_tt( root, true );
         }
-        else /* proved equal */
+        else if ( res == percy::synth_result::failure ) /* proved equal */
           return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
       }
     }
@@ -772,7 +774,7 @@ private:
           std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
         
           const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
           });
           
           if ( res == percy::synth_result::success ) /* CEX found */
@@ -796,7 +798,7 @@ private:
               return g;
             }
           }
-          else /* proved substitution */
+          else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
             //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
             auto g = ntk.create_or( s0, s1 );
@@ -844,7 +846,7 @@ private:
           std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
         
           const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, 0 );
+            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
           });
 
           if ( res == percy::synth_result::success ) /* CEX found */
@@ -868,7 +870,7 @@ private:
               return g;
             }
           }
-          else /* proved substitution */
+          else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
             //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
             auto g = ntk.create_and( s0, s1 );
