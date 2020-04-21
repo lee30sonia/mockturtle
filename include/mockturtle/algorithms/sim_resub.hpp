@@ -121,6 +121,9 @@ struct simresub_stats
 
   uint32_t num_cex{0};
 
+  uint32_t num_cex_div0{0};
+  uint32_t num_cex_div1{0};
+
   /*! \brief Total number of gain  */
   uint64_t estimated_gain{0};
 
@@ -692,6 +695,8 @@ private:
         {
           if ( found_cex( root, assumptions ) )
             return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
+          else
+            ++st.num_cex_div0;
           tt = get_tt( root );
           ntt = get_tt( root, true );
         }
@@ -797,6 +802,8 @@ private:
                 });
               return g;
             }
+            else
+              ++st.num_cex_div1;
           }
           else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
@@ -869,6 +876,8 @@ private:
                 });
               return g;
             }
+            else
+              ++st.num_cex_div1;
           }
           else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
