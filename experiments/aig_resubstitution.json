@@ -578,5 +578,150 @@
       }
     ],
     "version": "bbd1506"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "iwls2005/ac97_ctrl",
+        "equivalent": true,
+        "gain": 226,
+        "runtime": 0.22673256695270538,
+        "size": 14268
+      },
+      {
+        "benchmark": "iwls2005/aes_core",
+        "equivalent": true,
+        "gain": 371,
+        "runtime": 1.2202116250991821,
+        "size": 21522
+      },
+      {
+        "benchmark": "iwls2005/des_area",
+        "equivalent": true,
+        "gain": 107,
+        "runtime": 0.1484963446855545,
+        "size": 4857
+      },
+      {
+        "benchmark": "iwls2005/des_perf",
+        "equivalent": true,
+        "gain": 4857,
+        "runtime": 3.5888686180114746,
+        "size": 82650
+      },
+      {
+        "benchmark": "iwls2005/DMA",
+        "equivalent": true,
+        "gain": 921,
+        "runtime": 0.49574482440948486,
+        "size": 24393
+      },
+      {
+        "benchmark": "iwls2005/DSP",
+        "equivalent": true,
+        "gain": 1476,
+        "runtime": 0.9715195298194885,
+        "size": 45420
+      },
+      {
+        "benchmark": "iwls2005/ethernet",
+        "equivalent": true,
+        "gain": 412,
+        "runtime": 5.780386924743652,
+        "size": 86726
+      },
+      {
+        "benchmark": "iwls2005/i2c",
+        "equivalent": true,
+        "gain": 86,
+        "runtime": 0.024373017251491547,
+        "size": 1166
+      },
+      {
+        "benchmark": "iwls2005/leon2",
+        "equivalent": true,
+        "gain": 1639,
+        "runtime": 30.921754837036133,
+        "size": 789647
+      },
+      {
+        "benchmark": "iwls2005/leon3_opt",
+        "equivalent": true,
+        "gain": 2807,
+        "runtime": 42.668052673339844,
+        "size": 974977
+      },
+      {
+        "benchmark": "iwls2005/leon3",
+        "equivalent": true,
+        "gain": 1800,
+        "runtime": 49.41215515136719,
+        "size": 1088122
+      },
+      {
+        "benchmark": "iwls2005/leon3mp",
+        "equivalent": true,
+        "gain": 1042,
+        "runtime": 28.910507202148438,
+        "size": 652353
+      },
+      {
+        "benchmark": "iwls2005/mem_ctrl",
+        "equivalent": true,
+        "gain": 689,
+        "runtime": 0.3062913715839386,
+        "size": 15337
+      },
+      {
+        "benchmark": "iwls2005/netcard",
+        "equivalent": true,
+        "gain": 1080,
+        "runtime": 33.695838928222656,
+        "size": 803848
+      },
+      {
+        "benchmark": "iwls2005/pci_bridge32",
+        "equivalent": true,
+        "gain": 294,
+        "runtime": 0.5038228631019592,
+        "size": 22806
+      },
+      {
+        "benchmark": "iwls2005/RISC",
+        "equivalent": true,
+        "gain": 2267,
+        "runtime": 1.180397629737854,
+        "size": 75613
+      },
+      {
+        "benchmark": "iwls2005/sasc",
+        "equivalent": true,
+        "gain": 3,
+        "runtime": 0.007854100316762924,
+        "size": 773
+      },
+      {
+        "benchmark": "iwls2005/simple_spi",
+        "equivalent": true,
+        "gain": 17,
+        "runtime": 0.013820502907037735,
+        "size": 1053
+      },
+      {
+        "benchmark": "iwls2005/spi",
+        "equivalent": true,
+        "gain": 98,
+        "runtime": 0.07903102785348892,
+        "size": 3808
+      },
+      {
+        "benchmark": "iwls2005/ss_pcm",
+        "equivalent": true,
+        "gain": 0,
+        "runtime": 0.006153753027319908,
+        "size": 405
+      }
+    ],
+    "version": "0ad769b"
   }
 ]
