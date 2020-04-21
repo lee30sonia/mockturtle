@@ -53,6 +53,9 @@ struct patgen_params
   /*! \brief Number of initial random patterns to start with. */
   uint32_t num_random_pattern{1000};
 
+  /*! \brief Whether to start with patterns in a file. */
+  std::optional<std::string> patfile{};
+
   /*! \brief Whether to substitute constant nodes. */
   bool substitute_const{true};
 
@@ -64,6 +67,9 @@ struct patgen_params
 
   /*! \brief Whether to check and re-generate type 2 observable patterns. */
   bool observability_type2{false};
+
+  /*! \brief Whether to apply the distinguishing-node strategy. */
+  bool distinguish_nodes{false};
 
   /*! \brief Whether to save generated patterns into file. */
   std::optional<std::string> write_pats{};
@@ -113,6 +119,9 @@ struct patgen_stats
   /*! \brief Number of resolved type2 unobservable nodes. */
   uint32_t unobservable_type2_resolved{0};
 
+  /*! \brief Number of div0 distinguishing-node strategy generated patterns. */
+  uint32_t num_div0_pats{0};
+
   void report() const
   {
     //std::cout << "[i] kernel: default_resub_functor\n";
@@ -136,9 +145,18 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
 
+  /* without providing filename of random patterns */
   explicit patgen_impl( Ntk& ntk, patgen_params const& ps, patgen_stats& st )
     : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
       tts( ntk ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
+  {
+    st.num_total_patterns = ps.num_random_pattern;
+  }
+
+  /* provide filename of (fixed) random patterns */
+  explicit patgen_impl( Ntk& ntk, std::string const& patfile, patgen_params const& ps, patgen_stats& st )
+    : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
+      tts( ntk ), sim( patfile, ps.num_random_pattern )
   {
     st.num_total_patterns = ps.num_random_pattern;
   }
@@ -162,6 +180,9 @@ public:
 
     if ( ps.observability_type2 )
       observability_check();
+
+    if ( ps.distinguish_nodes )
+      distinguish_div0();
   }
 
 private:
@@ -360,6 +381,7 @@ private:
     solver.rollback();
   }
 
+private:
   void stuck_at_check()
   {
     std::vector<pabc::lit> assumptions( 1 );
@@ -546,6 +568,50 @@ private:
     } );
   }
 
+  void distinguish_div0()
+  {
+    ntk.foreach_gate( [&]( auto const& root ) 
+    {
+      ntk.foreach_gate( [&]( auto const& n ) 
+      {
+        if ( n <= root ) return true; /* only compare to 'later' nodes */
+
+        if ( tts[root] == tts[n] || ~tts[root] == tts[n] )
+        {
+          solver.add_var();
+          auto nlit = make_lit( solver.nr_vars()-1 );
+          solver.add_clause( {literals[root], literals[n], nlit} );
+          solver.add_clause( {literals[root], lit_not( literals[n] ), lit_not( nlit )} );
+          solver.add_clause( {lit_not( literals[root] ), literals[n], lit_not( nlit )} );
+          solver.add_clause( {lit_not( literals[root] ), lit_not( literals[n] ), nlit} );
+          std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, tts[root] == tts[n] ) );
+        
+          const auto res = call_with_stopwatch( st.time_sat, [&]() {
+            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+          });
+          
+          if ( res == percy::synth_result::success )
+          {
+            std::vector<bool> pattern;
+            for ( auto j = 1u; j <= ntk.num_pis(); ++j )
+              pattern.push_back(solver.var_value( j ));
+
+            sim.add_pattern(pattern);
+            ++st.num_total_patterns;
+            ++st.num_div0_pats;
+            /* re-simulate */
+            call_with_stopwatch( st.time_sim, [&]() {
+              simulate_nodes<Ntk>( ntk, tts, sim );
+            });
+          }
+        }
+
+        return true; /* next */
+      });
+      return true; /* next */
+    });
+  }
+
 private:
   Ntk& ntk;
 
@@ -591,21 +657,42 @@ partial_simulator pattern_generation( Ntk& ntk, patgen_params const& ps = {}, pa
 
   fanout_view<Ntk> fanout_view{ntk};
 
-  detail::patgen_impl p( fanout_view, ps, st );
-  p.run();
-
-  if ( ps.write_pats )
+  if ( ps.patfile )
   {
-    p.sim.write_patterns( *(ps.write_pats) );
+    detail::patgen_impl p( fanout_view, *(ps.patfile), ps, st );
+    p.run();
+
+    if ( ps.write_pats )
+    {
+      p.sim.write_patterns( *(ps.write_pats) );
+    }
+
+    if ( ps.verbose )
+      st.report();
+
+    if ( pst )
+      *pst = st;
+
+    return p.sim;
   }
+  else
+  {
+    detail::patgen_impl p( fanout_view, ps, st );
+    p.run();
 
-  if ( ps.verbose )
-    st.report();
+    if ( ps.write_pats )
+    {
+      p.sim.write_patterns( *(ps.write_pats) );
+    }
 
-  if ( pst )
-    *pst = st;
+    if ( ps.verbose )
+      st.report();
 
-  return p.sim;
+    if ( pst )
+      *pst = st;
+
+    return p.sim;
+  }
 }
 
 } /* namespace mockturtle */

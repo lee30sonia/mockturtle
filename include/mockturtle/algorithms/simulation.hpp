@@ -187,7 +187,7 @@ public:
     patterns = pats;
   }
 
-  partial_simulator( const std::string& filename )
+  partial_simulator( const std::string& filename, uint32_t length = 0 )
   {
     std::ifstream in( filename, std::ifstream::in );
     std::string line;
@@ -196,6 +196,8 @@ public:
     {
       patterns.emplace_back( line.length() * 4 );
       kitty::create_from_hex_string( patterns.back(), line );
+      if ( length != 0 )
+        patterns.back().resize( length );
     }
 
     in.close();

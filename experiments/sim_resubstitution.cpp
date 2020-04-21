@@ -42,11 +42,11 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#const", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#cex0", "#cex1", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt ) )
+  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   {
-    //if ( benchmark != "multiplier" ) continue;
+    //if ( benchmark != "cavlc" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig, orig;
@@ -60,11 +60,11 @@ int main()
     ps.max_divisors = 500u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.use_odc = true;
+    ps.use_odc = false;
     ps.odc_solve_limit = 10u;
 
-    bool useExternal = true;
-    auto pat_path = "patCEX/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    bool useExternal = false;
+    auto pat_path = "1000_sa10_obs/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
@@ -78,11 +78,15 @@ int main()
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 1000;
-      ps_pat.num_stuck_at = 10;
-      ps_pat.observability_type1 = true;
-      ps_pat.write_pats = "sa10/" + benchmark + ".pat";
+      ps_pat.num_random_pattern = 1024;
+      ps_pat.num_stuck_at = 1;
+      ps_pat.distinguish_nodes = true;
+      //ps_pat.observability_type1 = true;
+      //ps_pat.observability_type2 = true;
+      //ps_pat.write_pats = "rand/" + benchmark + ".pat";
+      ps_pat.patfile = "rand/" + benchmark + ".pat";
       sim = pattern_generation( aig, ps_pat, &st_pat );
+      std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
       aig = cleanup_dangling( aig );
     }
 
@@ -91,7 +95,7 @@ int main()
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
     //std::cout << "num_total_divisors = " << st.num_total_divisors << std::endl;
-    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st_pat.num_constant, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0, st.num_cex_div1, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();
