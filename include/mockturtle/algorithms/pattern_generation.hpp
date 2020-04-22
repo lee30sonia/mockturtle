@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <random>
 #include <mockturtle/networks/aig.hpp>
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
@@ -148,7 +149,7 @@ public:
   /* without providing filename of random patterns */
   explicit patgen_impl( Ntk& ntk, patgen_params const& ps, patgen_stats& st )
     : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
-      tts( ntk ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
+      tts( ntk ), random( ps.random_seed ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
   {
     st.num_total_patterns = ps.num_random_pattern;
   }
@@ -156,7 +157,7 @@ public:
   /* provide filename of (fixed) random patterns */
   explicit patgen_impl( Ntk& ntk, std::string const& patfile, patgen_params const& ps, patgen_stats& st )
     : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
-      tts( ntk ), sim( patfile, ps.num_random_pattern )
+      tts( ntk ), random( ps.random_seed ), sim( patfile, ps.num_random_pattern )
   {
     st.num_total_patterns = ps.num_random_pattern;
   }
@@ -182,7 +183,9 @@ public:
       observability_check();
 
     if ( ps.distinguish_nodes )
+    {
       distinguish_div0();
+    }
   }
 
 private:
@@ -312,7 +315,7 @@ private:
   {
     std::vector<uint32_t> pols;
     for ( auto i = 1u; i <= ntk.num_pis(); ++i )
-      if ( rand() % 2 )
+      if ( random() % 2 )
         pols.push_back( i );
     solver.set_polarity( pols );
   }
@@ -624,6 +627,8 @@ private:
   percy::bsat_wrapper solver;
   
   TT tts;
+
+  std::default_random_engine random;
 
 public:
   partial_simulator sim;
