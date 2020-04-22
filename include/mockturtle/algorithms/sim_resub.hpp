@@ -114,6 +114,7 @@ struct simresub_stats
 
   /* time & number of r == d1 &| d2 node substitutions */
   stopwatch<>::duration time_resub1{0};
+  stopwatch<>::duration time_div1_compare{0};
   uint32_t num_div1_accepts{0};
 
   /*! \brief Initial network size (before resubstitution) */
@@ -366,8 +367,8 @@ public:
         const auto ntk_is_updated = call_with_stopwatch( st.time_callback, [&]() {
             return callback( ntkbase, n, *g );
           });
-        //(void)ntk_is_updated; /* don't actually need to simulate again... */
-        if ( ntk_is_updated )
+        (void)ntk_is_updated; /* don't actually need to simulate again... */
+        if ( false ) //ntk_is_updated )
         {
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
@@ -748,6 +749,25 @@ private:
     }
   }
 
+  bool is_and( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
+  {
+    for ( auto i = 0u; i < tt.num_blocks(); ++i )
+    {
+      if ( ( tt1._bits[i] & tt2._bits[i] ) != tt._bits[i] )
+        return false;
+    }
+    return true;
+  }
+  bool is_or( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
+  {
+    for ( auto i = 0u; i < tt.num_blocks(); ++i )
+    {
+      if ( ( tt1._bits[i] | tt2._bits[i] ) != tt._bits[i] )
+        return false;
+    }
+    return true;
+  }
+
   std::optional<signal> resub_div1( node const& root, uint32_t required )
   {
     (void)required;
@@ -757,15 +777,18 @@ private:
     for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
     {
       auto const& s0 = udivs.positive_divisors.at( i );
+      auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
 
       for ( auto j = i + 1; j < udivs.positive_divisors.size(); ++j )
       {
         auto const& s1 = udivs.positive_divisors.at( j );
-
-        auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
-        if ( ( tt_s0 | tt_s1 ) == tt )
+        const auto isor = call_with_stopwatch( st.time_div1_compare, [&]() {
+            return is_or( tt_s0, tt_s1, tt);
+          });
+
+        if ( isor )
         {
           auto l_r = literals[root];
           auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
@@ -831,15 +854,18 @@ private:
     for ( auto i = 0u; i < udivs.negative_divisors.size(); ++i )
     {
       auto const& s0 = udivs.negative_divisors.at( i );
+      auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
 
       for ( auto j = i + 1; j < udivs.negative_divisors.size(); ++j )
       {
         auto const& s1 = udivs.negative_divisors.at( j );
-
-        auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
-        if ( ( tt_s0 & tt_s1 ) == tt )
+        const auto isand = call_with_stopwatch( st.time_div1_compare, [&]() {
+            return is_and( tt_s0, tt_s1, tt);
+          });
+
+        if ( isand )
         {
           auto l_r = literals[root];
           auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
