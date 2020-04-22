@@ -167,7 +167,7 @@ public:
   partial_simulator() = delete;
   partial_simulator( unsigned num_pis, unsigned num_pattern, std::default_random_engine::result_type seed = 0 )
   {
-    assert( num_pis > 0 );
+    assert( num_pis > 0u );
 
     for ( auto i = 0u; i < num_pis; ++i )
     {
@@ -187,7 +187,7 @@ public:
     patterns = pats;
   }
 
-  partial_simulator( const std::string& filename, uint32_t length = 0 )
+  partial_simulator( const std::string& filename, uint32_t length = 0u )
   {
     std::ifstream in( filename, std::ifstream::in );
     std::string line;
@@ -196,8 +196,10 @@ public:
     {
       patterns.emplace_back( line.length() * 4 );
       kitty::create_from_hex_string( patterns.back(), line );
-      if ( length != 0 )
+      if ( length != 0u )
+      {
         patterns.back().resize( length );
+      }
     }
 
     in.close();
@@ -413,7 +415,7 @@ void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered
 template<class Ntk>
 void simulate_nodes( Ntk const& ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, partial_simulator const& sim )
 {
-  /* TODO: The partial_truth_table specialized ntk.compute is only implemented in AIG and XAG. */
+  /* TODO: The partial_truth_table specialized ntk.compute is currently only implemented in AIG. */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
   static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );

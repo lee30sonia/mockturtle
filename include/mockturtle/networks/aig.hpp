@@ -1038,22 +1038,14 @@ public:
     auto tt1 = *begin++;
     auto tt2 = *begin++;
 
-    //assert( tt1.num_bits() == tt2.num_bits() );
-    //assert( tt1.num_bits() >= result.num_bits() );
+    assert( tt1.num_bits() == tt2.num_bits() );
+    assert( tt1.num_bits() >= result.num_bits() );
     if ( result.num_bits() == 0 )
     {
       result = ( c1.weight ? ~tt1 : tt1 ) & ( c2.weight ? ~tt2 : tt2 );
     }
     else
     {
-      //auto ctt1 = tt1.construct();
-      //auto ctt2 = tt2.construct();
-      //if ( c1.weight ) unary_operation( ctt1, tt1, []( auto a ) { return ~a; }, result.num_blocks() - 1 );
-      //if ( c2.weight ) unary_operation( ctt2, tt2, []( auto a ) { return ~a; }, result.num_blocks() - 1 );
-      //binary_operation( result, ctt1, ctt2, std::bit_and<>(), result.num_blocks() - 1 );
-
-      //binary_operation( result, c1.weight ? ~tt1 : tt1, c2.weight ? ~tt2 : tt2, std::bit_and<>(), result.num_blocks() - 1 );
-
       result.resize( tt1.num_bits() );
       result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) & ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
     }
