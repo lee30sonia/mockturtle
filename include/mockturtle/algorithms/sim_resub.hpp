@@ -470,7 +470,7 @@ private:
 
       /* if the fanout has all fanins in the set, add it */
       ntk.foreach_fanout( d, [&]( node const& p ){
-          if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > required )
+          if ( ntk.is_dead( p ) || ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > required )
             return true; /* next fanout */
 
           bool all_fanins_visited = true;
