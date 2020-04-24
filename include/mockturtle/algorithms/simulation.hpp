@@ -205,6 +205,28 @@ public:
     in.close();
   }
 
+  /* use patterns in `filename2` to fill up until `length` (`filename1` being the primary) */
+  partial_simulator( const std::string& filename1, const std::string& filename2, uint32_t length )
+  {
+    std::ifstream in1( filename1, std::ifstream::in );
+    std::ifstream in2( filename2, std::ifstream::in );
+    std::string line1, line2;
+
+    while ( getline( in1, line1 ) )
+    {
+      getline( in2, line2 );
+      patterns.emplace_back( ( line1.length() + line2.length() ) * 4 );
+      kitty::create_from_hex_string( patterns.back(), line2 + line1 );
+      if ( length != 0u )
+      {
+        patterns.back().resize( length );
+      }
+    }
+
+    in1.close();
+    in2.close();
+  }
+
   kitty::partial_truth_table compute_constant( bool value ) const
   {
     kitty::partial_truth_table zero( patterns.at( 0 ).num_bits() );
