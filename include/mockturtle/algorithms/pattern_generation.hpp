@@ -276,11 +276,16 @@ private:
 
       return true; /* next */
     });
+    assert( miter.size() > 0 );
+    solver.add_var();
+    const auto nlit = make_lit( solver.nr_vars() - 1 );
+    miter.emplace_back( nlit );
+    assumptions.emplace_back( lit_not( nlit ) );
     solver.add_clause( miter );
 
     /* solve and get answer */
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+      return solver.solve( &assumptions[0], &assumptions[0] + 2, ps.conflict_limit );
     });
     if ( res == percy::synth_result::success )
     {
@@ -291,7 +296,7 @@ private:
     else if ( res == percy::synth_result::failure )
     {
       //std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
-      if ( false )//( ps.substitute_const )
+      if ( ps.substitute_const )
       {
         ++st.num_constant;
         auto g = ntk.get_constant( !value );
