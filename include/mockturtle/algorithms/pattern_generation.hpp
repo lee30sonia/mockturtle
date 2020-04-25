@@ -234,6 +234,9 @@ private:
 
   bool generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern )
   {
+    if (n==276) solver.write_dimacs("before276_ok.txt");
+    //if (n==277) solver.write_dimacs("before277.txt");
+    std::cout<<"before: #clause: "<<solver.nr_clauses()<<" #vars: "<<solver.nr_vars()<<"\n";
     solver.bookmark();
 
     /* for the original circuit, assert original n to be value */
@@ -276,11 +279,17 @@ private:
 
       return true; /* next */
     });
+    assert( miter.size() > 0 );
+    //for (auto i : miter) std::cout<<i<<" "; std::cout<<"\n";
+    solver.add_var();
+    const auto nlit = make_lit( solver.nr_vars() - 1 );
+    miter.emplace_back( nlit );
+    assumptions.emplace_back( lit_not( nlit ) );
     solver.add_clause( miter );
 
     /* solve and get answer */
     const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+      return solver.solve( &assumptions[0], &assumptions[0] + 2, ps.conflict_limit );
     });
     if ( res == percy::synth_result::success )
     {
@@ -290,7 +299,7 @@ private:
     }
     else if ( res == percy::synth_result::failure )
     {
-      //std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
+      std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
       if ( false )//( ps.substitute_const )
       {
         ++st.num_constant;
@@ -304,10 +313,13 @@ private:
     }
     else
     {
-      //std::cout<<"solver timeout\n";
+      std::cout<<"solver timeout\n";
     }
 
     solver.rollback();
+    //if (n==276) solver.write_dimacs("after276.txt");
+    if (n==277) solver.write_dimacs("after277_ok.txt");
+    std::cout<<"after: #clause: "<<solver.nr_clauses()<<" #vars: "<<solver.nr_vars()<<"\n";
     return ( res == percy::synth_result::success );
   }
 
@@ -392,13 +404,14 @@ private:
 
     ntk.foreach_gate( [&]( auto const& n ) 
     {
+      if (n>510) return false; 
       //std::cout<<"processing node "<<unsigned(n)<<std::endl;
       if ( (tts[n] == zero) || (tts[n] == ~zero) )
       {
         bool value = !(tts[n] == ~zero); /* wanted value of n */
 
         assumptions[0] = lit_not_cond( literals[n], !value );
-      
+        if(n==510) {solver.write_dimacs("510_ok.txt", &assumptions[0], &assumptions[0] + 1);}
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
         });
@@ -418,9 +431,9 @@ private:
             bool observable = call_with_stopwatch( st.time_odc, [&]() { 
                 return pattern_is_observable( ntk, n, pattern, POs );
               });
-            if ( !observable )
+            if ( !observable && (n==276||n==277) )
             {
-              //std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
+              std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
               ++st.unobservable_type1;
               if ( generate_observable_pattern( n, value, pattern ) )
               {
@@ -448,7 +461,7 @@ private:
         }
         else if ( res == percy::synth_result::failure )
         {
-          //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
+          std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
           ++st.num_constant;
           if ( ps.substitute_const )
           {

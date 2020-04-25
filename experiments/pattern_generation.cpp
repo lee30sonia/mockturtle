@@ -43,9 +43,9 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
+  for ( auto const& benchmark : iwls_benchmarks(  ) )
   {
-    //if ( benchmark != "voter" ) continue;
+    if ( benchmark != "iwls2005/i2c" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -55,10 +55,12 @@ int main()
     patgen_params ps;
     patgen_stats st;
 
-    ps.num_random_pattern = 1000;
+    ps.num_random_pattern = 0;
+    //ps.distinguish_nodes = true;
+    //ps.substitute_const = false;
     ps.observability_type1 = true;
-    ps.observability_type2 = true;
-    ps.write_pats = "patgen/" + benchmark + ".pat";
+    //ps.observability_type2 = true;
+    //ps.write_pats = "rand/" + benchmark + ".pat";
     ps.random_seed = 1689;
     ps.progress = false;
 

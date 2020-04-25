@@ -162,5 +162,10 @@ namespace percy
             pabc::sat_solver_set_random(solver, fRandom);
         }
 
+        void write_dimacs( char* pFileName, pabc::lit* begin = 0, pabc::lit* end = 0 )
+        {
+            pabc::Sat_SolverWriteDimacs( solver, pFileName, begin, end, 1 );
+        }
+
     };
 }
