@@ -117,6 +117,10 @@ struct simresub_stats
   stopwatch<>::duration time_div1_compare{0};
   uint32_t num_div1_accepts{0};
 
+  /* time & number of (~)r == d1 ^ d2 node substitutions */
+  stopwatch<>::duration time_xor{0};
+  uint32_t num_xor_accepts{0};
+
   /*! \brief Initial network size (before resubstitution) */
   uint64_t initial_size{0};
 
@@ -568,7 +572,7 @@ private:
       return g; /* accepted resub */
     }
 
-    if ( ps.max_inserts == 0 || num_mffc <= 1 )
+    if ( ps.max_inserts < 1 || num_mffc <= 1 )
     {
       return std::nullopt;
     }
@@ -578,7 +582,7 @@ private:
         collect_unate_divisors( root, required );
       });
 
-    /* consider equal nodes */
+    /* consider single-gate resub */
     g = call_with_stopwatch( st.time_resub1, [&]() {
         return resub_div1( root, required );
       } );
@@ -589,9 +593,20 @@ private:
       return g; /* accepted resub */
     }
 
-    if ( ps.max_inserts == 1 || num_mffc == 2 )
+    if ( ps.max_inserts < 3 || num_mffc <= 3 )
     {
       return std::nullopt;
+    }
+
+    /* consider X(N)OR resub */
+    g = call_with_stopwatch( st.time_xor, [&]() {
+        return resub_xor( root, required );
+      } );
+    if ( g )
+    {
+      ++st.num_xor_accepts;
+      last_gain = num_mffc - 3;
+      return g; /* accepted resub */
     }
 
     return std::nullopt;
@@ -768,6 +783,41 @@ private:
     return true;
   }
 
+  bool is_xor( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
+  {
+    for ( auto i = 0u; i < tt.num_blocks(); ++i )
+    {
+      if ( ( tt1._bits[i] ^ tt2._bits[i] ) != tt._bits[i] )
+        return false;
+    }
+    return true;
+  }
+
+  signal insert_node( signal const& s0, signal const& s1, bool resim = true )
+  {
+    auto g = ntk.create_and( s0, s1 );
+
+    literals.resize();
+    solver.add_var();
+    auto l_g = literals[g] = make_lit( solver.nr_vars()-1 );
+    auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
+    auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
+
+    solver.add_clause( {lit_not( l_s0 ), l_g} );
+    solver.add_clause( {lit_not( l_s1 ), l_g} );
+    solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
+
+    /* re-simulate */
+    if ( resim )
+    {
+      call_with_stopwatch( st.time_sim, [&]() {
+          simulate_nodes<Ntk>( ntk, tts, sim );
+        });
+    }
+
+    return g;
+  }
+
   std::optional<signal> resub_div1( node const& root, uint32_t required )
   {
     (void)required;
@@ -810,20 +860,7 @@ private:
             if ( found_cex( root, assumptions ) )
             {
               //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-              auto g = ntk.create_or( s0, s1 );
-              /* update CNF */
-              literals.resize();
-              solver.add_var();
-              literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-              auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
-              solver.add_clause( {lit_not( l_s0 ), l_g} );
-              solver.add_clause( {lit_not( l_s1 ), l_g} );
-              solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
-              /* re-simulate */
-              call_with_stopwatch( st.time_sim, [&]() {
-                  simulate_nodes<Ntk>( ntk, tts, sim );
-                });
-              return g;
+              return !insert_node( !s0, !s1 );
             }
             else
               ++st.num_cex_div1;
@@ -831,20 +868,7 @@ private:
           else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
             //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            auto g = ntk.create_or( s0, s1 );
-            /* update CNF */
-            literals.resize();
-            solver.add_var();
-            literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-            auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
-            solver.add_clause( {lit_not( l_s0 ), l_g} );
-            solver.add_clause( {lit_not( l_s1 ), l_g} );
-            solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-                simulate_nodes<Ntk>( ntk, tts, sim );
-              });
-            return g;
+            return !insert_node( !s0, !s1 );
           }
         }
       }
@@ -887,20 +911,7 @@ private:
             if ( found_cex( root, assumptions ) )
             {
               //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-              auto g = ntk.create_and( s0, s1 );
-              /* update CNF */
-              literals.resize();
-              solver.add_var();
-              literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-              auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
-              solver.add_clause( {lit_not( l_g ), l_s0} );
-              solver.add_clause( {lit_not( l_g ), l_s1} );
-              solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
-              /* re-simulate */
-              call_with_stopwatch( st.time_sim, [&]() {
-                  simulate_nodes<Ntk>( ntk, tts, sim );
-                });
-              return g;
+              return insert_node( s0, s1 );
             }
             else
               ++st.num_cex_div1;
@@ -908,20 +919,63 @@ private:
           else if ( res == percy::synth_result::failure ) /* proved substitution */
           {
             //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            auto g = ntk.create_and( s0, s1 );
-            /* update CNF */
-            literals.resize();
-            solver.add_var();
-            literals[ntk.get_node(g)] = make_lit( solver.nr_vars()-1 );
-            auto l_g = lit_not_cond( literals[ntk.get_node(g)], ntk.is_complemented(g) );
-            solver.add_clause( {lit_not( l_g ), l_s0} );
-            solver.add_clause( {lit_not( l_g ), l_s1} );
-            solver.add_clause( {lit_not( l_s0 ), lit_not( l_s1 ), l_g} );
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-                simulate_nodes<Ntk>( ntk, tts, sim );
-              });
-            return g;
+            return insert_node( s0, s1 );
+          }
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<signal> resub_xor( node const& root, uint32_t required ) 
+  {
+    (void)required;
+    auto tt = get_tt( root );
+    auto ntt = get_tt( root, true );
+
+    //for ( auto i = 0u; i < num_divs; ++i )
+    for ( int i = num_divs-1; i > 0; --i )
+    {
+      auto const& s0 = divs.at( i );
+      auto const& tt_s0 = tts[s0];
+
+      for ( int j = i - 1; j >= 0; --j )
+      {
+        auto const& s1 = divs.at( j );
+        auto const& tt_s1 = tts[s1];
+
+        const auto isxor = call_with_stopwatch( st.time_div1_compare, [&]() {
+            return is_xor( tt_s0, tt_s1, tt);
+          });
+        const auto isxnor = call_with_stopwatch( st.time_div1_compare, [&]() {
+            return is_xor( tt_s0, tt_s1, ntt);
+          });
+
+        if ( isxor || isxnor )
+        {
+          solver.add_var();
+          auto nlit = make_lit( solver.nr_vars()-1 );
+          solver.add_clause( {lit_not( literals[s0] ), lit_not( literals[s1] ), lit_not_cond( literals[root], isxor ), nlit} );
+          solver.add_clause( {literals[s0], literals[s1], lit_not_cond( literals[root], isxor ), nlit} );
+          solver.add_clause( {literals[s0], lit_not( literals[s1] ), lit_not_cond( literals[root], isxnor ), nlit} );
+          solver.add_clause( {lit_not( literals[s0] ), literals[s1], lit_not_cond( literals[root], isxnor ), nlit} );
+          std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
+        
+          const auto res = call_with_stopwatch( st.time_sat, [&]() {
+            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+          });
+          
+          if ( res == percy::synth_result::success ) /* CEX found */
+          {
+            found_cex( root, assumptions );
+          }
+          else if ( res == percy::synth_result::failure ) /* proved equal */
+          {
+            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<unsigned(s0)<<(isxor? " XOR ": " XNOR ")<<unsigned(s1)<<"\n";
+            auto g1 = insert_node( ntk.make_signal( s0 ), !( ntk.make_signal( s1 ) ), false );
+            auto g2 = insert_node( !( ntk.make_signal( s0 ) ), ntk.make_signal( s1 ), false );
+            return isxor? !insert_node( !g1, !g2 ): insert_node( !g1, !g2 );
           }
         }
       }
