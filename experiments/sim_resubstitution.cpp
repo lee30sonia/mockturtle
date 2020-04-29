@@ -44,7 +44,8 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#cex0", "#cex1", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
 
-  for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
+  //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
+  for ( auto const& benchmark : iwls_benchmarks() )
   {
     //if ( benchmark != "cavlc" ) continue;
 
@@ -57,36 +58,38 @@ int main()
     simresub_stats st;
 
     ps.max_pis = 10u; //100u; //8u;
-    ps.max_divisors = 500u;
+    ps.max_divisors = 200u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.use_odc = false;
-    ps.odc_solve_limit = 10u;
+    //ps.use_odc = false;
+    //ps.odc_solve_limit = 10u;
+    ps.check_const = true;
 
-    bool useExternal = false;
-    auto pat_path = "1000_sa10_obs/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    bool useExternal = true;
+    auto pat_path = "sa5/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator sim(1,1);
     if ( useExternal )
     {
-      sim = partial_simulator( pat_path + benchmark + ".pat" );
+      sim = partial_simulator( pat_path + benchmark + ".pat", "rand/" + benchmark + ".pat", 4096 );
+      //sim = partial_simulator( pat_path + benchmark + ".pat" );
       st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
     }
     else
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 1024;
-      ps_pat.num_stuck_at = 1;
-      ps_pat.distinguish_nodes = true;
+      ps_pat.num_random_pattern = 0;
+      ps_pat.num_stuck_at = 5;
+      //ps_pat.distinguish_nodes = true;
       //ps_pat.observability_type1 = true;
       //ps_pat.observability_type2 = true;
-      //ps_pat.write_pats = "rand/" + benchmark + ".pat";
-      ps_pat.patfile = "rand/" + benchmark + ".pat";
+      ps_pat.write_pats = "sa5/" + benchmark + ".pat";
+      //ps_pat.patfile = "rand/" + benchmark + ".pat";
       sim = pattern_generation( aig, ps_pat, &st_pat );
-      std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
+      //std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
       aig = cleanup_dangling( aig );
     }
 

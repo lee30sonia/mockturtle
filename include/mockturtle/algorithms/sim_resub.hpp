@@ -67,6 +67,10 @@ struct simresub_params
   /*! \brief Whether to save generated patterns into file. */
   std::optional<std::string> write_pats{};
 
+  /*! \brief Whether to scan and substitute constant nodes first.
+             Only safe if the provided patterns are stuck-at checked. */
+  bool check_const{false};
+
   bool use_odc{false};
 
   uint32_t odc_solve_limit{5};
@@ -339,16 +343,33 @@ public:
     /* start the managers */
     progress_bar pbar{ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress};
 
-    generate_cnf<NtkBase>( ntkbase, [&]( auto const& clause ) {
-      solver.add_clause( clause );
-    }, literals );
-
     //std::vector<node> PIs( ntk.num_pis() );
     //ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
 
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
+
+    if ( ps.check_const )
+    {
+      auto const zero = sim.compute_constant( false );
+      auto const one = sim.compute_constant( true );
+
+      ntk.foreach_gate( [&]( auto const& n ){
+        if ( tts[n] == zero )
+          ntk.substitute_node( n, ntk.get_constant( false ) );
+        else if ( tts[n] == one )
+          ntk.substitute_node( n, ntk.get_constant( true ) );
+      });
+
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_nodes<Ntk>( ntk, tts, sim );
+      });
+    }
+
+    generate_cnf<NtkBase>( ntkbase, [&]( auto const& clause ) {
+      solver.add_clause( clause );
+    }, literals );
 
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();

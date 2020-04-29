@@ -187,7 +187,7 @@ inline bool equal( const partial_truth_table& first, const partial_truth_table& 
 template<typename TT>
 inline bool implies( const TT& first, const TT& second )
 {
-  return is_const0( binary_operation( first, second, []( auto a, auto b ) { return ~( ~a | b ); } ) );
+  return is_const0( binary_operation( first, second, []( auto a, auto b ) { return a & ~b; } ) );
 }
 
 /*! \brief Checks whether a truth table is lexicographically smaller than another
