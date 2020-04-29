@@ -160,6 +160,45 @@ inline uint64_t count_ones( const static_truth_table<NumVars, true>& tt )
 }
 /*! \endcond */
 
+namespace detail
+{
+
+uint64_t count_ones_fast( uint64_t x )
+{
+  x -= ( x >> 1 ) & 0x5555555555555555;
+  x = ( x & 0x3333333333333333 ) + ( ( x >> 2 ) & 0x3333333333333333 );
+  x = ( x + ( x >> 4 ) ) & 0x0F0F0F0F0F0F0F0F;
+  x += x >> 8;
+  x += x >> 16;
+  x += x >> 32;
+  return x & 0xFF;
+}
+
+} /* namespace detail */
+
+/*! \brief Count ones in truth table, faster algorithm
+    
+    Ported from ABC, originally from Hacker's Delight.
+
+  \param tt Truth table
+*/
+template<typename TT>
+inline uint64_t count_ones_fast( const TT& tt )
+{
+  return std::accumulate( tt.cbegin(), tt.cend(), uint64_t( 0 ),
+                          []( auto accu, auto word ) {
+                            return accu + detail::count_ones_fast( word );
+                          } );
+}
+
+/*! \cond PRIVATE */
+template<uint32_t NumVars>
+inline uint64_t count_ones_fast( const static_truth_table<NumVars, true>& tt )
+{
+  return detail::count_ones_fast( tt._bits );
+}
+/*! \endcond */
+
 /*! \brief Count zeros in truth table
 
   \param tt Truth table

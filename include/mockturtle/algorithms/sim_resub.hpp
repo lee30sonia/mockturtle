@@ -772,24 +772,24 @@ private:
       /* check positive containment */
       if ( kitty::implies( tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones_fast( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( ~tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones_fast( ~tt_d & tt ) ) );
         continue;
       }
 
       /* check negative containment */
       if ( kitty::implies( tt, tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones_fast( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( tt, ~tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones_fast( ~tt_d & tt ) ) );
         continue;
       }
     }
