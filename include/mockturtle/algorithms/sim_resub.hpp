@@ -282,13 +282,23 @@ public:
   {
     using signal = typename Ntk::signal;
 
-    std::vector<signal> positive_divisors;
-    std::vector<signal> negative_divisors;
+    std::vector<std::pair<signal, uint32_t>> positive_divisors;
+    std::vector<std::pair<signal, uint32_t>> negative_divisors;
 
     void clear()
     {
       positive_divisors.clear();
       negative_divisors.clear();
+    }
+
+    void sort()
+    {
+      std::sort(positive_divisors.begin(), positive_divisors.end(), [](std::pair<signal, uint32_t> a, std::pair<signal, uint32_t> b) {
+          return a.second > b.second;   
+      });
+      std::sort(negative_divisors.begin(), negative_divisors.end(), [](std::pair<signal, uint32_t> a, std::pair<signal, uint32_t> b) {
+          return a.second > b.second;   
+      });
     }
   };
 
@@ -741,27 +751,29 @@ private:
       /* check positive containment */
       if ( kitty::implies( tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( ntk.make_signal( d ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( ~tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( !ntk.make_signal( d ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
         continue;
       }
 
       /* check negative containment */
       if ( kitty::implies( tt, tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( ntk.make_signal( d ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( tt, ~tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( !ntk.make_signal( d ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
         continue;
       }
     }
+
+    udivs.sort();
   }
 
   bool is_and( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
@@ -826,12 +838,12 @@ private:
     /* check for positive unate divisors */
     for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
     {
-      auto const& s0 = udivs.positive_divisors.at( i );
+      auto const& s0 = udivs.positive_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
 
       for ( auto j = i + 1; j < udivs.positive_divisors.size(); ++j )
       {
-        auto const& s1 = udivs.positive_divisors.at( j );
+        auto const& s1 = udivs.positive_divisors.at( j ).first;
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
         const auto isor = call_with_stopwatch( st.time_div1_compare, [&]() {
@@ -877,12 +889,12 @@ private:
     /* check for negative unate divisors */
     for ( auto i = 0u; i < udivs.negative_divisors.size(); ++i )
     {
-      auto const& s0 = udivs.negative_divisors.at( i );
+      auto const& s0 = udivs.negative_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
 
       for ( auto j = i + 1; j < udivs.negative_divisors.size(); ++j )
       {
-        auto const& s1 = udivs.negative_divisors.at( j );
+        auto const& s1 = udivs.negative_divisors.at( j ).first;
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
         const auto isand = call_with_stopwatch( st.time_div1_compare, [&]() {
