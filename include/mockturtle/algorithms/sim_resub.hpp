@@ -864,7 +864,7 @@ private:
       auto const& s0 = udivs.positive_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
       auto const& w_s0 = udivs.positive_divisors.at( i ).second;
-      if ( w_s0 < int( w / 2 ) )
+      if ( w_s0 < uint32_t( w / 2 ) )
         break;
 
       for ( auto j = i + 1; j < udivs.positive_divisors.size(); ++j )
@@ -921,7 +921,7 @@ private:
       auto const& s0 = udivs.negative_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
       auto const& w_s0 = udivs.negative_divisors.at( i ).second;
-      if ( w_s0 < int( nw / 2 ) )
+      if ( w_s0 < uint32_t( nw / 2 ) )
         break;
 
       for ( auto j = i + 1; j < udivs.negative_divisors.size(); ++j )
