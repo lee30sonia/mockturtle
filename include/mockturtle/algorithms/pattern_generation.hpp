@@ -63,6 +63,9 @@ struct patgen_params
   /*! \brief Number of patterns each node should have for both values. */
   uint32_t num_stuck_at{1};
 
+  /*! \brief Fanout levels to consider for observability. */
+  int observability_levels{0};
+
   /*! \brief Whether to check and re-generate type 1 observable patterns. */
   bool observability_type1{false};
 
@@ -85,8 +88,6 @@ struct patgen_params
   std::default_random_engine::result_type random_seed{0};
 
   uint32_t conflict_limit{1000};
-
-  uint32_t ODC_failure_limit{100};
 };
 
 struct patgen_stats
@@ -218,7 +219,7 @@ private:
     });
   }
 
-  void make_lit_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk>& lits )
+  void make_lit_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk>& lits, std::vector<uint32_t>& miter, int level )
   {
     ntk.foreach_fanout( n, [&]( auto const& fo ){
       if ( ntk.visited( fo ) == ntk.trav_id() ) return true; /* skip */
@@ -226,10 +227,31 @@ private:
 
       solver.add_var();
       lits[fo] = make_lit( solver.nr_vars() - 1 );
+
+      if ( level == ps.observability_levels )
+      {
+        add_miter_clauses( ntk.make_signal( fo ), lits, miter );
+        return true;
+      }
       
-      make_lit_fanout_cone_rec( fo, lits );
+      make_lit_fanout_cone_rec( fo, lits, miter, level+1 );
       return true; /* next */
     });
+  }
+
+  void add_miter_clauses( signal const& f, unordered_node_map<uint32_t, Ntk> const& lits, std::vector<uint32_t>& miter )
+  {
+    const auto a = lit_not_cond( literals[f], ntk.is_complemented( f ) );
+    const auto b = lit_not_cond( lits[f], ntk.is_complemented( f ) );
+
+    solver.add_var();
+    const auto c = make_lit( solver.nr_vars() - 1 );
+    miter.emplace_back( c );
+
+    solver.add_clause( {lit_not( a ), lit_not( b ), lit_not( c )} );
+    solver.add_clause( {lit_not( a ), b, c} );
+    solver.add_clause( {a, lit_not( b ), c} );
+    solver.add_clause( {a, b, lit_not( c )} );
   }
 
   bool generate_observable_pattern( node const& n, bool value, std::vector<bool>& pattern )
@@ -242,13 +264,15 @@ private:
 
     /* literals for the duplicated part */
     unordered_node_map<uint32_t, Ntk> lits( ntk );
+    std::vector<uint32_t> miter;
+
     ntk.foreach_fanin( n, [&]( auto const& fi ){
       lits[fi] = literals[fi];
     });
     solver.add_var();
     lits[n] = make_lit( solver.nr_vars() - 1 );
     ntk.incr_trav_id();
-    make_lit_fanout_cone_rec( n, lits );
+    make_lit_fanout_cone_rec( n, lits, miter, 1 );
 
     /* the inverse version of n */
     add_clauses_for_gate( n, lits, true );
@@ -258,25 +282,15 @@ private:
     duplicate_fanout_cone_rec( n, lits );
 
     /* miter for POs */
-    std::vector<uint32_t> miter;
     ntk.foreach_po( [&]( auto const& f ){
       if ( !lits.has( ntk.get_node( f ) ) ) return true; /* PO not in TFO, skip */
 
-      const auto a = lit_not_cond( literals[f], ntk.is_complemented( f ) );
-      const auto b = lit_not_cond( lits[f], ntk.is_complemented( f ) );
-
-      solver.add_var();
-      const auto c = make_lit( solver.nr_vars() - 1 );
-      miter.emplace_back( c );
-
-      solver.add_clause( {lit_not( a ), lit_not( b ), lit_not( c )} );
-      solver.add_clause( {lit_not( a ), b, c} );
-      solver.add_clause( {a, lit_not( b ), c} );
-      solver.add_clause( {a, b, lit_not( c )} );
+      add_miter_clauses( f, lits, miter );
 
       return true; /* next */
     });
-    assert( miter.size() > 0 );
+    //assert( miter.size() > 0 );
+    for (auto i : miter) std::cout<<i<<" "; std::cout<<"\n";
     solver.add_var();
     const auto nlit = make_lit( solver.nr_vars() - 1 );
     miter.emplace_back( nlit );
@@ -295,8 +309,8 @@ private:
     }
     else if ( res == percy::synth_result::failure )
     {
-      //std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<", substitute with const.\n";
-      if ( ps.substitute_const )
+      //std::cout<<"UNSAT: node "<<unsigned(n)<<" is un-testable at value "<<value<<".\n";
+      if ( false )//( ps.substitute_const )
       {
         ++st.num_constant;
         auto g = ntk.get_constant( !value );
@@ -359,7 +373,7 @@ private:
           /* check if the found pattern is observable */ 
           ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
           bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-              return pattern_is_observable( ntk, n, pattern, POs );
+              return pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0 ? -1: ps.observability_levels );
             });
           if ( !observable )
           {
@@ -422,7 +436,7 @@ private:
             ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
             //unordered_node_map<bool, Ntk> po_vals( ntk );
             bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-                return pattern_is_observable( ntk, n, pattern, POs );
+                return pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0? -1: ps.observability_levels );
               });
             if ( !observable )
             {
@@ -431,7 +445,7 @@ private:
               if ( generate_observable_pattern( n, value, pattern ) )
               {
                 ++st.unobservable_type1_resolved;
-                //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs ) <<"\n";
+                //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0? -1: ps.observability_levels ) <<"\n";
               }
             }
           }
