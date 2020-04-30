@@ -772,24 +772,24 @@ private:
       /* check positive containment */
       if ( kitty::implies( tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones_fast( tt_d & tt ) ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( ~tt_d, tt ) )
       {
-        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones_fast( ~tt_d & tt ) ) );
+        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
         continue;
       }
 
       /* check negative containment */
       if ( kitty::implies( tt, tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones_fast( tt_d & tt ) ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_zeros( tt_d & tt ) ) );
         continue;
       }
       if ( kitty::implies( tt, ~tt_d ) )
       {
-        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones_fast( ~tt_d & tt ) ) );
+        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_zeros( ~tt_d & tt ) ) );
         continue;
       }
     }
@@ -855,15 +855,23 @@ private:
   {
     (void)required;
     auto const& tt = tts[root];
+    auto const& w = kitty::count_ones_fast( tt );
+    auto const& nw = tt.num_bits() - w;
 
     /* check for positive unate divisors */
     for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
     {
       auto const& s0 = udivs.positive_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
+      auto const& w_s0 = udivs.positive_divisors.at( i ).second;
+      if ( w_s0 < int( w / 2 ) )
+        break;
 
       for ( auto j = i + 1; j < udivs.positive_divisors.size(); ++j )
       {
+        if ( w_s0 + udivs.positive_divisors.at( j ).second < w )
+          break;
+
         auto const& s1 = udivs.positive_divisors.at( j ).first;
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
@@ -912,9 +920,15 @@ private:
     {
       auto const& s0 = udivs.negative_divisors.at( i ).first;
       auto const& tt_s0 = ntk.is_complemented(s0)? ~(tts[s0]): tts[s0];
+      auto const& w_s0 = udivs.negative_divisors.at( i ).second;
+      if ( w_s0 < int( nw / 2 ) )
+        break;
 
       for ( auto j = i + 1; j < udivs.negative_divisors.size(); ++j )
       {
+        if ( w_s0 + udivs.negative_divisors.at( j ).second < nw )
+          break;
+
         auto const& s1 = udivs.negative_divisors.at( j ).first;
         auto const& tt_s1 = ntk.is_complemented(s1)? ~(tts[s1]): tts[s1];
 
