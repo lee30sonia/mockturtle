@@ -213,7 +213,7 @@ private:
     solver.add_clause( {lit_not( l_fi[0] ), lit_not( l_fi[1] ), c} );
   }
 
-  void duplicate_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk> const& lits )
+  void duplicate_fanout_cone_rec( node const& n, unordered_node_map<uint32_t, Ntk> const& lits, int level )
   {
     ntk.foreach_fanout( n, [&]( auto const& fo ){
       if ( ntk.visited( fo ) == ntk.trav_id() ) return true; /* skip */
@@ -221,7 +221,9 @@ private:
 
       add_clauses_for_gate( fo, lits );
 
-      duplicate_fanout_cone_rec( fo, lits );
+      if ( level == ps.observability_levels ) return true;
+
+      duplicate_fanout_cone_rec( fo, lits, level+1 );
       return true; /* next */
     });
   }
@@ -282,7 +284,7 @@ private:
 
     /* the other copy of fanout cone */
     ntk.incr_trav_id();
-    duplicate_fanout_cone_rec( n, lits );
+    duplicate_fanout_cone_rec( n, lits, 1 );
 
     /* miter for POs */
     ntk.foreach_po( [&]( auto const& f ){
@@ -292,8 +294,7 @@ private:
 
       return true; /* next */
     });
-    //assert( miter.size() > 0 );
-    for (auto i : miter) std::cout<<i<<" "; std::cout<<"\n";
+    //for (auto i : miter) std::cout<<i<<" "; std::cout<<"\n";
     assert( miter.size() > 0 );
     const auto nlit = new_lit();
     miter.emplace_back( nlit );
