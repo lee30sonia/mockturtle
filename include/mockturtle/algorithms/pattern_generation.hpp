@@ -404,6 +404,7 @@ private:
 
         assumptions[0] = lit_not_cond( literals[n], !value );
       
+        set_random_polarity();
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
         });
