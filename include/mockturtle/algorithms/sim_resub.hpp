@@ -451,13 +451,13 @@ private:
       return;
     ntk.set_visited( n, ntk.trav_id() );
 
-    ntk.foreach_fanin( n, [&]( const auto& f ){
-        collect_divisors_rec( ntk.get_node( f ), internal );
-      });
-
     /* collect the internal nodes */
     if ( ntk.value( n ) == 0 && n != 0 ) /* ntk.fanout_size( n ) */
       internal.emplace_back( n );
+
+    ntk.foreach_fanin( n, [&]( const auto& f ){
+        collect_divisors_rec( ntk.get_node( f ), internal );
+      }); 
   }
 
   bool collect_divisors( node const& root, std::vector<node> const& leaves, uint32_t required )
@@ -716,8 +716,8 @@ private:
     auto tt = get_tt( root );
     auto ntt = get_tt( root, true );
 
-    //for ( auto i = 0u; i < num_divs; ++i )
-    for ( int i = num_divs-1; i >= 0; --i )
+    for ( auto i = 0u; i < num_divs; ++i )
+    //for ( int i = num_divs-1; i >= 0; --i )
     {
       auto const d = divs.at( i );
       auto ttd = get_tt( d );
