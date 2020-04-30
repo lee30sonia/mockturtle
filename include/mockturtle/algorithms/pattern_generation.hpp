@@ -173,6 +173,7 @@ public:
     generate_cnf<Ntk>( ntk, [&]( auto const& clause ) {
       solver.add_clause( clause );
     }, literals );
+    max_id = ntk.size() - 1;
 
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
@@ -190,6 +191,12 @@ public:
   }
 
 private:
+  uint32_t new_lit()
+  {
+    solver.add_var();
+    return make_lit( ++max_id );
+  }
+
   void add_clauses_for_gate( node const& n, unordered_node_map<uint32_t, Ntk> const& lits, bool inverse = false )
   {
     /* currently only consider AIG */
@@ -225,8 +232,7 @@ private:
       if ( ntk.visited( fo ) == ntk.trav_id() ) return true; /* skip */
       ntk.set_visited( fo, ntk.trav_id() );
 
-      solver.add_var();
-      lits[fo] = make_lit( solver.nr_vars() - 1 );
+      lits[fo] = new_lit();
 
       if ( level == ps.observability_levels )
       {
@@ -243,9 +249,7 @@ private:
   {
     const auto a = lit_not_cond( literals[f], ntk.is_complemented( f ) );
     const auto b = lit_not_cond( lits[f], ntk.is_complemented( f ) );
-
-    solver.add_var();
-    const auto c = make_lit( solver.nr_vars() - 1 );
+    const auto c = new_lit();
     miter.emplace_back( c );
 
     solver.add_clause( {lit_not( a ), lit_not( b ), lit_not( c )} );
@@ -269,8 +273,7 @@ private:
     ntk.foreach_fanin( n, [&]( auto const& fi ){
       lits[fi] = literals[fi];
     });
-    solver.add_var();
-    lits[n] = make_lit( solver.nr_vars() - 1 );
+    lits[n] = new_lit();
     ntk.incr_trav_id();
     make_lit_fanout_cone_rec( n, lits, miter, 1 );
 
@@ -291,8 +294,8 @@ private:
     });
     //assert( miter.size() > 0 );
     for (auto i : miter) std::cout<<i<<" "; std::cout<<"\n";
-    solver.add_var();
-    const auto nlit = make_lit( solver.nr_vars() - 1 );
+    assert( miter.size() > 0 );
+    const auto nlit = new_lit();
     miter.emplace_back( nlit );
     assumptions.emplace_back( lit_not( nlit ) );
     solver.add_clause( miter );
@@ -601,8 +604,7 @@ private:
 
         if ( tts[root] == tts[n] || ~tts[root] == tts[n] )
         {
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
+          auto nlit = new_lit();
           solver.add_clause( {literals[root], literals[n], nlit} );
           solver.add_clause( {literals[root], lit_not( literals[n] ), lit_not( nlit )} );
           solver.add_clause( {lit_not( literals[root] ), literals[n], lit_not( nlit )} );
@@ -645,6 +647,7 @@ private:
 
   node_map<uint32_t, Ntk> literals;
   percy::bsat_wrapper solver;
+  uint32_t max_id;
   
   TT tts;
 
