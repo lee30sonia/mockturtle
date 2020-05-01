@@ -71,7 +71,8 @@ struct simresub_params
              Only safe if the provided patterns are stuck-at checked. */
   bool check_const{false};
 
-  bool use_odc{false};
+  /*! \brief Whether to utilize ODC, and how many levels. 0 = no. -1 = Consider TFO until PO. */
+  int odc_levels{0};
 
   uint32_t odc_solve_limit{5};
 
@@ -645,6 +646,9 @@ private:
 
   bool found_cex( node const& n, std::vector<pabc::lit>& assumptions )
   {
+    //++st.num_cex;
+    //return false;
+
     /* return true if it is actually a legal substitution */
     std::vector<bool> pattern;
     for ( auto j = 1u; j <= ntk.num_pis(); ++j )
@@ -657,22 +661,20 @@ private:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    if ( !ps.use_odc )
+    if ( ps.odc_levels == 0 )
       return false;
 
-    std::vector<node> POs( ntk.num_pos() );
-    ntk.foreach_po( [&]( auto const& f, auto i ){ POs[i] = ntk.get_node( f ); });
-    if ( pattern_is_observable( ntk, n, pattern, POs ) )
+    if ( pattern_is_observable( ntk, n, pattern, ps.odc_levels ) )
       return false;
 
     std::cout<<"cex is not observable! \n";
     solver.bookmark();
-    auto const res = solve_again( pattern, n, assumptions, POs, 1 );
+    auto const res = solve_again( pattern, n, assumptions, 1 );
     solver.rollback();
     return res;
   }
 
-  bool solve_again( std::vector<bool>& pattern, node const& n, std::vector<pabc::lit>& assumptions, std::vector<node> const& POs, uint32_t counter )
+  bool solve_again( std::vector<bool>& pattern, node const& n, std::vector<pabc::lit>& assumptions, uint32_t counter )
   {
     /* block this pattern */
     std::vector<uint32_t> clause( ntk.num_pis() );
@@ -692,22 +694,33 @@ private:
       }
       for ( auto j = 1u; j <= ntk.num_pis(); ++j )
         pattern[j-1] = solver.var_value( j ); 
-      if ( pattern_is_observable( ntk, n, pattern, POs ) )
+      if ( pattern_is_observable( ntk, n, pattern, ps.odc_levels ) )
+      {
+        sim.add_pattern(pattern);
+        ++st.num_cex;
+        /* re-simulate */
+        call_with_stopwatch( st.time_sim, [&]() {
+          simulate_nodes<Ntk>( ntk, tts, sim );
+        });
         return false;
-      return solve_again( pattern, n, assumptions, POs, counter + 1 );
+      }
+
+      return solve_again( pattern, n, assumptions, counter + 1 );
     }
-    std::cout<<"ODC utilized with "<<(counter+1)<<" more solves\n";
-    return true;
+    else if ( res == percy::synth_result::failure )
+    {
+      std::cout<<"ODC utilized with "<<(counter+1)<<" more solves\n";
+      return true;
+    }
+    return false;
   }
 
   kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
   {
-    if ( !ps.use_odc )
+    if ( ps.odc_levels == 0 )
       return inverse? ~tts[n]: tts[n];
 
-    std::vector<node> POs( ntk.num_pos() );
-    ntk.foreach_po( [&]( auto const& f, auto i ){ POs[i] = ntk.get_node( f ); });
-    return ( inverse? ~tts[n]: tts[n] ) | observability_dont_cares_without_window( ntk, n, sim, tts, POs );
+    return ( inverse? ~tts[n]: tts[n] ) | observability_dont_cares( ntk, n, sim, tts, ps.odc_levels );
   }
 
   std::optional<signal> resub_div0( node const& root, uint32_t required ) 
