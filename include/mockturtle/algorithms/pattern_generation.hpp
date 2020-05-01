@@ -63,8 +63,8 @@ struct patgen_params
   /*! \brief Number of patterns each node should have for both values. */
   uint32_t num_stuck_at{1};
 
-  /*! \brief Fanout levels to consider for observability. */
-  int observability_levels{0};
+  /*! \brief Fanout levels to consider for observability. -1 = no limit. */
+  int observability_levels{-1};
 
   /*! \brief Whether to check and re-generate type 1 observable patterns. */
   bool observability_type1{false};
@@ -149,7 +149,7 @@ public:
 
   /* without providing filename of random patterns */
   explicit patgen_impl( Ntk& ntk, patgen_params const& ps, patgen_stats& st )
-    : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
+    : ntk( ntk ), ps( ps ), st( st ), literals( node_literals( ntk ) ), 
       tts( ntk ), random( ps.random_seed ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
   {
     st.num_total_patterns = ps.num_random_pattern;
@@ -157,7 +157,7 @@ public:
 
   /* provide filename of (fixed) random patterns */
   explicit patgen_impl( Ntk& ntk, std::string const& patfile, patgen_params const& ps, patgen_stats& st )
-    : ntk( ntk ), ps( ps ), st( st ), POs( ntk.num_pos() ), literals( node_literals( ntk ) ), 
+    : ntk( ntk ), ps( ps ), st( st ), literals( node_literals( ntk ) ), 
       tts( ntk ), random( ps.random_seed ), sim( patfile, ps.num_random_pattern )
   {
     st.num_total_patterns = ps.num_random_pattern;
@@ -375,9 +375,8 @@ private:
         if ( false ) //( ps.observability_type1 )
         {
           /* check if the found pattern is observable */ 
-          ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
           bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-              return pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0 ? -1: ps.observability_levels );
+              return pattern_is_observable( ntk, n, pattern, ps.observability_levels );
             });
           if ( !observable )
           {
@@ -386,7 +385,7 @@ private:
             if ( generate_observable_pattern( n, value, pattern ) )
             {
               ++st.unobservable_type1_resolved;
-              //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs ) <<"\n";
+              //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, ps.observability_levels ) <<"\n";
             }
           }
         }
@@ -437,10 +436,8 @@ private:
           if ( ps.observability_type1 )
           {
             /* check if the found pattern is observable */ 
-            ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
-            //unordered_node_map<bool, Ntk> po_vals( ntk );
             bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-                return pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0? -1: ps.observability_levels );
+                return pattern_is_observable( ntk, n, pattern, ps.observability_levels );
               });
             if ( !observable )
             {
@@ -449,7 +446,7 @@ private:
               if ( generate_observable_pattern( n, value, pattern ) )
               {
                 ++st.unobservable_type1_resolved;
-                //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, POs, ps.observability_levels == 0? -1: ps.observability_levels ) <<"\n";
+                //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, ps.observability_levels ) <<"\n";
               }
             }
           }
@@ -542,9 +539,8 @@ private:
     ntk.foreach_gate( [&]( auto const& n ) 
     {
       /* compute ODC */
-      ntk.foreach_po( [&]( auto const& f, auto i ){ POs.at(i) = ntk.get_node( f ); });
       auto odc = call_with_stopwatch( st.time_odc, [&]() { 
-          return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs );
+          return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.observability_levels );
         });
 
       /* check if under non-ODCs n is always the same value */ 
@@ -565,7 +561,7 @@ private:
             simulate_nodes<Ntk>( ntk, tts, sim );
           });
 
-          //auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs ); });
+          //auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.observability_levels ); });
           //std::cout<<"adding generated pattern, now? "<<( ( tts[n] & ~odc2 ) != sim.compute_constant( false ) )<<"\n";
         }
       }
@@ -586,7 +582,7 @@ private:
             simulate_nodes<Ntk>( ntk, tts, sim );
           });
 
-          //auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares_without_window<Ntk>( ntk, n, sim, tts, POs ); });
+          //auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.observability_levels ); });
           //std::cout<<"adding generated pattern, now? "<<( ( tts[n] | odc2 ) != sim.compute_constant( true ) )<<"\n";
         }
       }
@@ -643,8 +639,6 @@ private:
 
   patgen_params const& ps;
   patgen_stats& st;
-
-  std::vector<node> POs;
 
   node_map<uint32_t, Ntk> literals;
   percy::bsat_wrapper solver;

@@ -46,7 +46,7 @@ int main()
   //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "iwls2005/pci_bridge32" ) continue;
+    //if ( benchmark != "iwls2005/mem_ctrl" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -56,11 +56,12 @@ int main()
     patgen_params ps;
     patgen_stats st;
 
-    ps.num_random_pattern = 0;
+    ps.num_random_pattern = 256;
     ps.observability_type1 = true;
-    //ps.observability_type2 = true;
+    ps.observability_type2 = true;
     ps.observability_levels = 5;
-    ps.write_pats = "patgen/" + benchmark + ".pat";
+    ps.write_pats = "256sa1obs/" + benchmark + ".pat";
+    //ps.patfile = "test.pat";
     ps.random_seed = 1689;
     ps.progress = false;
 
