@@ -46,8 +46,8 @@ int main()
   //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "iwls2005/mem_ctrl" ) continue;
-
+    //if ( benchmark != "iwls2005/systemcaes" && benchmark != "iwls2005/systemcdes" && benchmark != "iwls2005/tv80" && benchmark != "iwls2005/usb_funct" && benchmark != "iwls2005/usb_phy" ) continue;
+    if (benchmark != "iwls2005/mem_ctrl") continue;
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -56,11 +56,11 @@ int main()
     patgen_params ps;
     patgen_stats st;
 
-    ps.num_random_pattern = 256;
-    ps.observability_type1 = true;
-    ps.observability_type2 = true;
-    ps.observability_levels = 5;
-    ps.write_pats = "256sa1obs/" + benchmark + ".pat";
+    ps.num_random_pattern = 4096;
+    //ps.observability_type1 = true;
+    //ps.observability_type2 = true;
+    //ps.observability_levels = 5;
+    //ps.write_pats = "sa1obs12/" + benchmark + ".pat";
     //ps.patfile = "test.pat";
     ps.random_seed = 1689;
     ps.progress = false;
@@ -69,7 +69,7 @@ int main()
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), size_before, st.num_total_patterns, st.num_total_patterns - ps.num_random_pattern, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), size_before - aig.num_gates(), st.num_total_patterns, st.num_total_patterns - ps.num_random_pattern, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();

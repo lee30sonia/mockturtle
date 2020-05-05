@@ -60,13 +60,13 @@ int main()
     ps.max_pis = 10u; //100u; //8u;
     ps.max_divisors = 200u;
     ps.max_inserts = 1u;
-    ps.progress = false;
-    //ps.use_odc = false;
+    //ps.progress = true;
+    //ps.odc_levels = 5;
     //ps.odc_solve_limit = 10u;
     ps.check_const = true;
 
     bool useExternal = true;
-    auto pat_path = "sa5/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    auto pat_path = "256sa1obs12/";
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
@@ -81,13 +81,14 @@ int main()
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 0;
-      ps_pat.num_stuck_at = 5;
+      ps_pat.num_random_pattern = 256;
+      ps_pat.num_stuck_at = 0;
       //ps_pat.distinguish_nodes = true;
       //ps_pat.observability_type1 = true;
       //ps_pat.observability_type2 = true;
-      ps_pat.write_pats = "sa5/" + benchmark + ".pat";
-      //ps_pat.patfile = "rand/" + benchmark + ".pat";
+      //ps_pat.observability_levels = 5;
+      //ps_pat.write_pats = "sa5/" + benchmark + ".pat";
+      ps_pat.patfile = "rand/" + benchmark + ".pat";
       sim = pattern_generation( aig, ps_pat, &st_pat );
       //std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
       aig = cleanup_dangling( aig );

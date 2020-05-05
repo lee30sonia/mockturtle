@@ -43,8 +43,9 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, float, bool> exp( "aig_resubstitution", "benchmark", "size_before", "size_after", "runtime", "equivalent" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iwls_benchmarks() )
   {
+    if (benchmark!="iwls2005/DMA") continue;
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -52,9 +53,11 @@ int main()
     resubstitution_params ps;
     resubstitution_stats st;
 
-    ps.max_pis = 8u;
+    ps.max_pis = 10u;
+    ps.max_divisors = 200u;
     ps.max_inserts = 1u;
     ps.progress = false;
+    ps.verbose = true;
 
     const uint32_t size_before = aig.num_gates();
     aig_resubstitution( aig, ps, &st );

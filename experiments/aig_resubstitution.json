@@ -723,5 +723,17 @@
       }
     ],
     "version": "fc251b3"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "iwls2005/DMA",
+        "equivalent": true,
+        "runtime": 0.7360958456993103,
+        "size_after": 23859,
+        "size_before": 24393
+      }
+    ],
+    "version": "2e180b1"
   }
 ]
