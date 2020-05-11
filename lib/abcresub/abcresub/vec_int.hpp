@@ -8,7 +8,7 @@
 
 #pragma once
 
-namespace abc
+namespace abcresub
 {
 
 typedef struct Vec_Int_t_ Vec_Int_t;
@@ -124,4 +124,4 @@ inline int Vec_IntTwoFindCommon( Vec_Int_t * vArr1, Vec_Int_t * vArr2, Vec_Int_t
     return Vec_IntSize(vArr);
 }
 
-}
+} /* namespace abcresub */

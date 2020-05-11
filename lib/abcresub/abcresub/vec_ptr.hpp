@@ -8,7 +8,7 @@
 
 #pragma once
 
-namespace abc
+namespace abcresub
 {
 
 typedef struct Vec_Ptr_t_ Vec_Ptr_t;
@@ -91,4 +91,4 @@ inline void Vec_PtrAppend( Vec_Ptr_t * vVec1, Vec_Ptr_t * vVec2 )
         Vec_PtrPush( vVec1, Entry );
 }
 
-} /* abc */
+} /* abcresub */

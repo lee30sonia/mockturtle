@@ -8,7 +8,7 @@
 
 #pragma once
 
-namespace abc
+namespace abcresub
 {
 
 typedef struct Vec_Wrd_t_ Vec_Wrd_t;
@@ -74,4 +74,4 @@ inline void Vec_WrdPush( Vec_Wrd_t * p, word Entry )
     p->pArray[p->nSize++] = Entry;
 }
 
-} /* abc */
+} /* abcresub */

@@ -8,7 +8,7 @@
 
 #pragma once
 
-namespace abc
+namespace abcresub
 {
 
 inline int Abc_TtCountOnes( word x )
@@ -275,4 +275,4 @@ inline int Abc_TtIntersectXor( word * pOut, int fComp, word * pIn0, word * pIn1,
     return 0;
 }
 
-} /* abc */
+} /* abcresub */

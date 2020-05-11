@@ -14,7 +14,7 @@
 #include "vec_wrd.hpp"
 #include "tt.hpp"
 
-namespace abc
+namespace abcresub
 {
 
 typedef struct Gia_ResbMan_t_ Gia_ResbMan_t;
@@ -900,4 +900,4 @@ void Abc_ResubDumpProblem( char * pFileName, void ** ppDivs, int nDivs, int nWor
 }
 #endif
 
-} /* abc */
+} /* namespace abcresub */

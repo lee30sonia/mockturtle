@@ -8,7 +8,7 @@
 
 #pragma once
 
-namespace abc
+namespace abcresub
 {
 
 typedef uint64_t word;
@@ -20,13 +20,27 @@ inline int      Abc_Var2Lit( int Var, int c )          { assert(Var >= 0 && !(c 
 inline int      Abc_LitNot( int Lit )                  { assert(Lit >= 0); return Lit ^ 1;                           }
 inline int      Abc_LitNotCond( int Lit, int c )       { assert(Lit >= 0); return Lit ^ (int)(c > 0);                }
 
-#define ABC_CONST(number) number ## ULL 
+#ifndef ABC_CONST
+#define ABC_CONST(number) number ## ULL
+#endif /* ABC_CONST */
+
+#ifndef ABC_ALLOC
 #define ABC_ALLOC(type, num)     ((type *) malloc(sizeof(type) * (size_t)(num)))
+#endif /* ABC_ALLOC */
+
+#ifndef ABC_CALLOC
 #define ABC_CALLOC(type, num)    ((type *) calloc((size_t)(num), sizeof(type)))
+#endif /* ABC_CALLOC */
+
+#ifndef ABC_FREE
 #define ABC_FREE(obj)            ((obj) ? (free((char *) (obj)), (obj) = 0) : 0)
+#endif /* ABC_FREE */
+
+#ifndef ABC_REALLOC
 #define ABC_REALLOC(type, obj, num) \
         ((obj) ? ((type *) realloc((char *)(obj), sizeof(type) * (size_t)(num))) : \
          ((type *) malloc(sizeof(type) * (size_t)(num))))
+#endif /* ABC_REALLOC */
 
 void Abc_MergeSortCostMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End, int * pOut )
 {
@@ -104,4 +118,4 @@ int * Abc_MergeSortCost( int * pCosts, int nSize )
     return pResult;
 }
 
-}
+} /* namespace abcresub */
