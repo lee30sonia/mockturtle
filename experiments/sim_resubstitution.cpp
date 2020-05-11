@@ -64,7 +64,7 @@ int main()
     ps.check_const = false;
 
     bool useExternal = false;
-    auto pat_path = "sa5/"; 
+    auto pat_path = "pats/"; 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
@@ -78,10 +78,10 @@ int main()
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 256;
-      ps_pat.num_stuck_at = 5;
-      ps_pat.write_pats = "sa5/" + benchmark + ".pat"; 
-      /* NOTE: you have to manually create directories build/sa5/iwls2005/, if you want to use them later with `useExternal` */
+      ps_pat.num_random_pattern = 1024;
+      ps_pat.num_stuck_at = 1;
+      ps_pat.write_pats = "pats/" + benchmark + ".pat"; 
+      /* NOTE: you have to manually create directories build/pats/iwls2005/, if you want to use them later with `useExternal` */
       sim = pattern_generation( aig, ps_pat, &st_pat );
       aig = cleanup_dangling( aig );
     }
