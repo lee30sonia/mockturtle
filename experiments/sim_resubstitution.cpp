@@ -57,39 +57,32 @@ int main()
     simresub_params ps;
     simresub_stats st;
 
-    ps.max_pis = 10u; //100u; //8u;
+    ps.max_pis = 10u;
     ps.max_divisors = 200u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    //ps.use_odc = false;
-    //ps.odc_solve_limit = 10u;
-    ps.check_const = true;
+    ps.check_const = false;
 
-    bool useExternal = true;
-    auto pat_path = "sa5/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    bool useExternal = false;
+    auto pat_path = "sa5/"; 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator sim(1,1);
     if ( useExternal )
     {
-      sim = partial_simulator( pat_path + benchmark + ".pat", "rand/" + benchmark + ".pat", 4096 );
-      //sim = partial_simulator( pat_path + benchmark + ".pat" );
+      sim = partial_simulator( pat_path + benchmark + ".pat" );
       st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
     }
     else
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 0;
+      ps_pat.num_random_pattern = 256;
       ps_pat.num_stuck_at = 5;
-      //ps_pat.distinguish_nodes = true;
-      //ps_pat.observability_type1 = true;
-      //ps_pat.observability_type2 = true;
-      ps_pat.write_pats = "sa5/" + benchmark + ".pat";
-      //ps_pat.patfile = "rand/" + benchmark + ".pat";
+      ps_pat.write_pats = "sa5/" + benchmark + ".pat"; 
+      /* NOTE: you have to manually create directories build/sa5/iwls2005/, if you want to use them later with `useExternal` */
       sim = pattern_generation( aig, ps_pat, &st_pat );
-      //std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
       aig = cleanup_dangling( aig );
     }
 
@@ -97,13 +90,11 @@ int main()
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    //std::cout << "num_total_divisors = " << st.num_total_divisors << std::endl;
     exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0, st.num_cex_div1, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();
   exp.table();
-  //exp.compare();
 
   return 0;
 }
