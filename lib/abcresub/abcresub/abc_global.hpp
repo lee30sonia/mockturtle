@@ -42,6 +42,74 @@ inline int      Abc_LitNotCond( int Lit, int c )       { assert(Lit >= 0); retur
          ((type *) malloc(sizeof(type) * (size_t)(num))))
 #endif /* ABC_REALLOC */
 
+void Abc_SortMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End, int * pOut )
+{
+    int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
+    int * pOutBeg = pOut;
+    while ( p1Beg < p1End && p2Beg < p2End )
+    {
+        if ( *p1Beg == *p2Beg )
+            *pOut++ = *p1Beg++, *pOut++ = *p2Beg++; 
+        else if ( *p1Beg < *p2Beg )
+            *pOut++ = *p1Beg++; 
+        else // if ( *p1Beg > *p2Beg )
+            *pOut++ = *p2Beg++; 
+    }
+    while ( p1Beg < p1End )
+        *pOut++ = *p1Beg++; 
+    while ( p2Beg < p2End )
+        *pOut++ = *p2Beg++;
+    assert( pOut - pOutBeg == nEntries );
+}
+
+void Abc_Sort_rec( int * pInBeg, int * pInEnd, int * pOutBeg )
+{
+    int nSize = pInEnd - pInBeg;
+    assert( nSize > 0 );
+    if ( nSize == 1 )
+        return;
+    if ( nSize == 2 )
+    {
+         if ( pInBeg[0] > pInBeg[1] )
+         {
+             pInBeg[0] ^= pInBeg[1];
+             pInBeg[1] ^= pInBeg[0];
+             pInBeg[0] ^= pInBeg[1];
+         }
+    }
+    else if ( nSize < 8 )
+    {
+        int temp, i, j, best_i;
+        for ( i = 0; i < nSize-1; i++ )
+        {
+            best_i = i;
+            for ( j = i+1; j < nSize; j++ )
+                if ( pInBeg[j] < pInBeg[best_i] )
+                    best_i = j;
+            temp = pInBeg[i]; 
+            pInBeg[i] = pInBeg[best_i]; 
+            pInBeg[best_i] = temp;
+        }
+    }
+    else
+    {
+        Abc_Sort_rec( pInBeg, pInBeg + nSize/2, pOutBeg );
+        Abc_Sort_rec( pInBeg + nSize/2, pInEnd, pOutBeg + nSize/2 );
+        Abc_SortMerge( pInBeg, pInBeg + nSize/2, pInBeg + nSize/2, pInEnd, pOutBeg );
+        memcpy( pInBeg, pOutBeg, sizeof(int) * nSize );
+    }
+}
+
+void Abc_MergeSort( int * pInput, int nSize )
+{
+    int * pOutput;
+    if ( nSize < 2 )
+        return;
+    pOutput = (int *) malloc( sizeof(int) * nSize );
+    Abc_Sort_rec( pInput, pInput + nSize, pOutput );
+    free( pOutput );
+}
+
 void Abc_MergeSortCostMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End, int * pOut )
 {
     int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
@@ -62,19 +130,22 @@ void Abc_MergeSortCostMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End,
     assert( pOut - pOutBeg == nEntries );
 }
 
-void Abc_MergeSortCost_rec( int * pInBeg, int * pInEnd, int * pOutBeg, int * pCost )
+void Abc_MergeSortCost_rec( int * pInBeg, int * pInEnd, int * pOutBeg )
 {
-    int nSize = pInEnd - pInBeg;
+    int nSize = (pInEnd - pInBeg)/2;
     assert( nSize > 0 );
     if ( nSize == 1 )
         return;
     if ( nSize == 2 )
     {
-         if ( pCost[pInBeg[0]] > pCost[pInBeg[1]] )
+         if ( pInBeg[1] > pInBeg[3] )
          {
-             pInBeg[0] ^= pInBeg[1];
-             pInBeg[1] ^= pInBeg[0];
-             pInBeg[0] ^= pInBeg[1];
+             pInBeg[1] ^= pInBeg[3];
+             pInBeg[3] ^= pInBeg[1];
+             pInBeg[1] ^= pInBeg[3];
+             pInBeg[0] ^= pInBeg[2];
+             pInBeg[2] ^= pInBeg[0];
+             pInBeg[0] ^= pInBeg[2];
          }
     }
     else if ( nSize < 8 )
@@ -84,19 +155,22 @@ void Abc_MergeSortCost_rec( int * pInBeg, int * pInEnd, int * pOutBeg, int * pCo
         {
             best_i = i;
             for ( j = i+1; j < nSize; j++ )
-                if ( pCost[pInBeg[j]] < pCost[pInBeg[best_i]] )
+                if ( pInBeg[2*j+1] < pInBeg[2*best_i+1] )
                     best_i = j;
-            temp = pInBeg[i]; 
-            pInBeg[i] = pInBeg[best_i]; 
-            pInBeg[best_i] = temp;
+            temp = pInBeg[2*i]; 
+            pInBeg[2*i] = pInBeg[2*best_i]; 
+            pInBeg[2*best_i] = temp;
+            temp = pInBeg[2*i+1]; 
+            pInBeg[2*i+1] = pInBeg[2*best_i+1]; 
+            pInBeg[2*best_i+1] = temp;
         }
     }
     else
     {
-        Abc_MergeSortCost_rec( pInBeg, pInBeg + nSize/2, pOutBeg, pCost );
-        Abc_MergeSortCost_rec( pInBeg + nSize/2, pInEnd, pOutBeg + nSize/2, pCost );
-        Abc_MergeSortCostMerge( pInBeg, pInBeg + nSize/2, pInBeg + nSize/2, pInEnd, pOutBeg /* , pCost */ ); // edit: hriener
-        memcpy( pInBeg, pOutBeg, sizeof(int) * nSize );
+        Abc_MergeSortCost_rec( pInBeg, pInBeg + 2*(nSize/2), pOutBeg );
+        Abc_MergeSortCost_rec( pInBeg + 2*(nSize/2), pInEnd, pOutBeg + 2*(nSize/2) );
+        Abc_MergeSortCostMerge( pInBeg, pInBeg + 2*(nSize/2), pInBeg + 2*(nSize/2), pInEnd, pOutBeg );
+        memcpy( pInBeg, pOutBeg, sizeof(int) * 2 * nSize );
     }
 }
 
@@ -110,7 +184,7 @@ int * Abc_MergeSortCost( int * pCosts, int nSize )
     pOutput = (int *) malloc( sizeof(int) * 2 * nSize );
     for ( i = 0; i < nSize; i++ )
         pInput[2*i] = i, pInput[2*i+1] = pCosts[i];
-    Abc_MergeSortCost_rec( pInput, pInput + 2*nSize, pOutput, pCosts ); /* edit: hriener */
+    Abc_MergeSortCost_rec( pInput, pInput + 2*nSize, pOutput );
     for ( i = 0; i < nSize; i++ )
         pResult[i] = pInput[2*i];
     free( pOutput );
