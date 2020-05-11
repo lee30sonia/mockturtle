@@ -40,6 +40,7 @@
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/circuit_validator.hpp>
 #include <kitty/partial_truth_table.hpp>
+#include <bill/sat/interface/abc_bsat2.hpp>
 #include "cleanup.hpp"
 #include "reconv_cut2.hpp"
 
@@ -281,9 +282,10 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using vgate = typename circuit_validator<Ntk>::gate;
+  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2>;
+  using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
-  using gtype = typename circuit_validator<Ntk>::gate_type;
+  using gtype = typename validator_t::gate_type;
 
   struct unate_divisors
   {
@@ -930,7 +932,7 @@ private:
   TT tts;
   partial_simulator& sim;
 
-  circuit_validator<Ntk> validator;
+  validator_t validator;
 
   unate_divisors udivs;
 
