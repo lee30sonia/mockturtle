@@ -38,13 +38,9 @@
 #include "../views/depth_view.hpp"
 #include "../views/fanout_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/algorithms/circuit_validator.hpp>
 #include <kitty/partial_truth_table.hpp>
-//#include <kitty/print.hpp>
-//#include <kitty/operators.hpp>
-#include "../utils/node_map.hpp"
-#include "cnf.hpp"
 #include "cleanup.hpp"
-#include <percy/solvers/bsat2.hpp>
 #include "reconv_cut2.hpp"
 
 namespace mockturtle
@@ -86,6 +82,8 @@ struct simresub_params
   uint32_t max_pis{8};
 
   uint32_t conflict_limit{1000};
+
+  uint32_t random_seed{0};
 };
 
 struct simresub_stats
@@ -133,6 +131,7 @@ struct simresub_stats
 
   uint32_t num_cex_div0{0};
   uint32_t num_cex_div1{0};
+  uint32_t num_cex_xor{0};
 
   /*! \brief Total number of gain  */
   uint64_t estimated_gain{0};
@@ -282,6 +281,9 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
+  using vgate = typename circuit_validator<Ntk>::gate;
+  using fanin = typename vgate::fanin;
+  using gtype = typename circuit_validator<Ntk>::gate_type;
 
   struct unate_divisors
   {
@@ -307,9 +309,9 @@ public:
     }
   };
 
-  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, resub_callback_t const& callback = substitue_fn<NtkBase> )
+  explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, validator_params const& vps, resub_callback_t const& callback = substitue_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
-      tts( ntk ), sim( sim ), literals( node_literals( ntkbase ) )
+      tts( ntk ), sim( sim ), validator( ntk, vps )
   {
     st.initial_size = ntk.num_gates(); 
 
@@ -331,6 +333,12 @@ public:
     };
     
     ntk._events->on_add.emplace_back( update_level_of_new_node );
+    ntk._events->on_add.emplace_back( [&]( const auto& n ){
+      validator.add_node( n );
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_nodes<Ntk>( ntk, tts, sim );
+      });
+    });
     
     ntk._events->on_modified.emplace_back( update_level_of_existing_node );
     
@@ -368,10 +376,6 @@ public:
       });
     }
 
-    generate_cnf<NtkBase>( ntkbase, [&]( auto const& clause ) {
-      solver.add_clause( clause );
-    }, literals );
-
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();
     ntk.foreach_gate( [&]( auto const& n, auto i ){
@@ -400,17 +404,10 @@ public:
         st.estimated_gain += last_gain;
 
         /* update network */
-        const auto ntk_is_updated = call_with_stopwatch( st.time_callback, [&]() {
+        call_with_stopwatch( st.time_callback, [&]() {
             return callback( ntkbase, n, *g );
           });
-        (void)ntk_is_updated; /* don't actually need to simulate again... */
-        if ( false ) //ntk_is_updated )
-        {
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
-          });
-        }
+
         return true; /* next */
       });
   }
@@ -644,75 +641,15 @@ private:
     return std::nullopt;
   }
 
-  bool found_cex( node const& n, std::vector<pabc::lit>& assumptions )
+  void found_cex()
   {
-    //++st.num_cex;
-    //return false;
-
-    /* return true if it is actually a legal substitution */
-    std::vector<bool> pattern;
-    for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-      pattern.push_back(solver.var_value( j ));
-    sim.add_pattern(pattern);
     ++st.num_cex;
+    sim.add_pattern( validator.cex );
 
     /* re-simulate */
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
-
-    if ( ps.odc_levels == 0 )
-      return false;
-
-    if ( pattern_is_observable( ntk, n, pattern, ps.odc_levels ) )
-      return false;
-
-    std::cout<<"cex is not observable! \n";
-    solver.bookmark();
-    auto const res = solve_again( pattern, n, assumptions, 1 );
-    solver.rollback();
-    return res;
-  }
-
-  bool solve_again( std::vector<bool>& pattern, node const& n, std::vector<pabc::lit>& assumptions, uint32_t counter )
-  {
-    /* block this pattern */
-    std::vector<uint32_t> clause( ntk.num_pis() );
-    for ( auto i = 0u; i < ntk.num_pis(); ++i )
-      clause[i] = make_lit( i + 1, pattern[i] );
-    solver.add_clause( clause );
-
-    const auto res = call_with_stopwatch( st.time_sat, [&]() {
-      return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
-    });
-    if ( res == percy::synth_result::success )
-    {
-      if ( counter >= ps.odc_solve_limit )
-      {
-        std::cout<<"odc_solve_limit reached\n";
-        return false;
-      }
-      for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-        pattern[j-1] = solver.var_value( j ); 
-      if ( pattern_is_observable( ntk, n, pattern, ps.odc_levels ) )
-      {
-        sim.add_pattern(pattern);
-        ++st.num_cex;
-        /* re-simulate */
-        call_with_stopwatch( st.time_sim, [&]() {
-          simulate_nodes<Ntk>( ntk, tts, sim );
-        });
-        return false;
-      }
-
-      return solve_again( pattern, n, assumptions, counter + 1 );
-    }
-    else if ( res == percy::synth_result::failure )
-    {
-      std::cout<<"ODC utilized with "<<(counter+1)<<" more solves\n";
-      return true;
-    }
-    return false;
   }
 
   kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
@@ -737,31 +674,21 @@ private:
 
       if ( tt == ttd || ntt == ttd )
       {
-        bool phase = ( ntt == ttd );
+        auto const g = ( tt == ttd ) ? ntk.make_signal( d ) : !ntk.make_signal( d );
 
-        solver.add_var();
-        auto nlit = make_lit( solver.nr_vars()-1 );
-        solver.add_clause( {literals[root], literals[d], nlit} );
-        solver.add_clause( {literals[root], lit_not( literals[d] ), lit_not( nlit )} );
-        solver.add_clause( {lit_not( literals[root] ), literals[d], lit_not( nlit )} );
-        solver.add_clause( {lit_not( literals[root] ), lit_not( literals[d] ), nlit} );
-        std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, !phase ) );
-      
-        const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+        const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+          return validator.validate( root, g );
         });
-        
-        if ( res == percy::synth_result::success ) /* CEX found */
+
+        if ( valid )
         {
-          if ( found_cex( root, assumptions ) )
-            return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
-          else
-            ++st.num_cex_div0;
-          tt = get_tt( root );
-          ntt = get_tt( root, true );
+          return g;
         }
-        else if ( res == percy::synth_result::failure ) /* proved equal */
-          return phase ? !ntk.make_signal( d ) : ntk.make_signal( d );
+        else
+        {
+          ++st.num_cex_div0;
+          found_cex();
+        }
       }
     }
 
@@ -839,31 +766,6 @@ private:
     return true;
   }
 
-  signal insert_node( signal const& s0, signal const& s1, bool resim = true )
-  {
-    auto g = ntk.create_and( s0, s1 );
-
-    literals.resize();
-    solver.add_var();
-    auto l_g = literals[g] = make_lit( solver.nr_vars()-1 );
-    auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
-    auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
-
-    solver.add_clause( {lit_not( l_s0 ), l_g} );
-    solver.add_clause( {lit_not( l_s1 ), l_g} );
-    solver.add_clause( {l_s0, l_s1, lit_not( l_g )} );
-
-    /* re-simulate */
-    if ( resim )
-    {
-      call_with_stopwatch( st.time_sim, [&]() {
-          simulate_nodes<Ntk>( ntk, tts, sim );
-        });
-    }
-
-    return g;
-  }
-
   std::optional<signal> resub_div1( node const& root, uint32_t required )
   {
     (void)required;
@@ -894,35 +796,22 @@ private:
 
         if ( isor )
         {
-          auto l_r = literals[root];
-          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
-          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
+          fanin fi1; fi1.idx = 0; fi1.inv = !ntk.is_complemented( s0 );
+          fanin fi2; fi2.idx = 1; fi2.inv = !ntk.is_complemented( s1 );
+          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
 
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
-          solver.add_clause( {l_r, l_s0, l_s1, nlit} );
-          solver.add_clause( {lit_not( l_r ), lit_not( l_s0 ), nlit} );
-          solver.add_clause( {lit_not( l_r ), lit_not( l_s1 ), nlit} );
-          std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
-        
-          const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+            return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, true );
           });
-          
-          if ( res == percy::synth_result::success ) /* CEX found */
+
+          if ( valid )
           {
-            if ( found_cex( root, assumptions ) )
-            {
-              //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-              return !insert_node( !s0, !s1 );
-            }
-            else
-              ++st.num_cex_div1;
+            return ntk.create_or( s0, s1 );
           }
-          else if ( res == percy::synth_result::failure ) /* proved substitution */
+          else
           {
-            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" OR "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            return !insert_node( !s0, !s1 );
+            ++st.num_cex_div1;
+            found_cex();
           }
         }
       }
@@ -951,35 +840,22 @@ private:
 
         if ( isand )
         {
-          auto l_r = literals[root];
-          auto l_s0 = lit_not_cond( literals[ntk.get_node(s0)], ntk.is_complemented(s0));
-          auto l_s1 = lit_not_cond( literals[ntk.get_node(s1)], ntk.is_complemented(s1));
+          fanin fi1; fi1.idx = 0; fi1.inv = ntk.is_complemented( s0 );
+          fanin fi2; fi2.idx = 1; fi2.inv = ntk.is_complemented( s1 );
+          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
 
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
-          solver.add_clause( {l_r, l_s0, nlit} );
-          solver.add_clause( {l_r, l_s1, nlit} );
-          solver.add_clause( {lit_not( l_r ), lit_not( l_s0 ), lit_not( l_s1 ), nlit} );
-          std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
-        
-          const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+            return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, false );
           });
 
-          if ( res == percy::synth_result::success ) /* CEX found */
+          if ( valid )
           {
-            if ( found_cex( root, assumptions ) )
-            {
-              //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-              return insert_node( s0, s1 );
-            }
-            else
-              ++st.num_cex_div1;
+            return ntk.create_and( s0, s1 );
           }
-          else if ( res == percy::synth_result::failure ) /* proved substitution */
+          else
           {
-            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<(ntk.is_complemented(s0)?"~":"")<<unsigned(ntk.get_node(s0))<<" AND "<<(ntk.is_complemented(s1)?"~":"")<<unsigned(ntk.get_node(s1))<<"\n";
-            return insert_node( s0, s1 );
+            ++st.num_cex_div1;
+            found_cex();
           }
         }
       }
@@ -1014,28 +890,22 @@ private:
 
         if ( isxor || isxnor )
         {
-          solver.add_var();
-          auto nlit = make_lit( solver.nr_vars()-1 );
-          solver.add_clause( {lit_not( literals[s0] ), lit_not( literals[s1] ), lit_not_cond( literals[root], isxor ), nlit} );
-          solver.add_clause( {literals[s0], literals[s1], lit_not_cond( literals[root], isxor ), nlit} );
-          solver.add_clause( {literals[s0], lit_not( literals[s1] ), lit_not_cond( literals[root], isxnor ), nlit} );
-          solver.add_clause( {lit_not( literals[s0] ), literals[s1], lit_not_cond( literals[root], isxnor ), nlit} );
-          std::vector<pabc::lit> assumptions( 1, lit_not( nlit ) );
-        
-          const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
+          fanin fi1; fi1.idx = 0; fi1.inv = false;
+          fanin fi2; fi2.idx = 1; fi2.inv = false;
+          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::XOR;
+
+          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+            return validator.validate( root, {s0, s1}, {gate}, isxnor );
           });
-          
-          if ( res == percy::synth_result::success ) /* CEX found */
+
+          if ( valid )
           {
-            found_cex( root, assumptions );
+            return isxor ? ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) ) : !ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) );
           }
-          else if ( res == percy::synth_result::failure ) /* proved equal */
+          else
           {
-            //std::cout<<"found substitution "<< unsigned(root)<<" = "<<unsigned(s0)<<(isxor? " XOR ": " XNOR ")<<unsigned(s1)<<"\n";
-            auto g1 = insert_node( ntk.make_signal( s0 ), !( ntk.make_signal( s1 ) ), false );
-            auto g2 = insert_node( !( ntk.make_signal( s0 ) ), ntk.make_signal( s1 ), false );
-            return isxor? !insert_node( !g1, !g2 ): insert_node( !g1, !g2 );
+            ++st.num_cex_xor;
+            found_cex();
           }
         }
       }
@@ -1060,8 +930,7 @@ private:
   TT tts;
   partial_simulator& sim;
 
-  node_map<uint32_t, NtkBase> literals;
-  percy::bsat_wrapper solver;
+  circuit_validator<Ntk> validator;
 
   unate_divisors udivs;
 
@@ -1098,9 +967,15 @@ void sim_resubstitution( Ntk& ntk, partial_simulator& sim, simresub_params const
   depth_view<Ntk> depth_view{ntk};
   resub_view_t resub_view{depth_view};
 
+  validator_params vps;
+  vps.odc_levels = ps.odc_levels;
+  vps.conflict_limit = ps.conflict_limit;
+  vps.randomize = true;
+  vps.random_seed = ps.random_seed;
+
   simresub_stats st;
 
-  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, detail::substitue_fn<Ntk> );
+  detail::simresub_impl<Ntk, resub_view_t> p( ntk, resub_view, ps, st, sim, vps, detail::substitue_fn<Ntk> );
   p.run();
 
   if ( ps.write_pats )
