@@ -163,7 +163,7 @@ inline uint64_t count_ones( const static_truth_table<NumVars, true>& tt )
 namespace detail
 {
 
-uint64_t count_ones_fast( uint64_t x )
+inline uint64_t count_ones_fast( uint64_t x )
 {
   x -= ( x >> 1 ) & 0x5555555555555555;
   x = ( x & 0x3333333333333333 ) + ( ( x >> 2 ) & 0x3333333333333333 );
