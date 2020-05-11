@@ -61,12 +61,12 @@ public:
     assert( abc_divs != nullptr && "assume that memory for divisors has been allocated" );
 
     assert( tts[node].num_blocks() == num_blocks_per_truth_table );
+    auto const tt = complement ? ~tts[node] : tts[node];
     for ( uint64_t i = 0ul; i < num_blocks_per_truth_table; ++i )
     {
-      auto const tt = complement ? ~tts[node] : tts[node];
       Vec_WrdPush( abc_tts, tt._bits[i] );
-      Vec_PtrPush( abc_divs, Vec_WrdEntryP( abc_tts, counter * num_blocks_per_truth_table + i ) );
     }
+    Vec_PtrPush( abc_divs, Vec_WrdEntryP( abc_tts, counter * num_blocks_per_truth_table ) );
     ++counter;
   }
 
@@ -83,9 +83,11 @@ public:
     }
   }
 
-  void compute_function( abcresub::Gia_ResbMan_t * p )
+  void compute_function()
   {
-    abcresub::Gia_ManResubPerform( p, abc_divs, num_blocks_per_truth_table, 100, /* fDebug = */1, /* fVerbose = */1 );
+    int ArraySize;
+    int * pArray;
+    ArraySize = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, 4, /* debug = */1, /* verbose = */1, &pArray );
   }
 
 protected:
