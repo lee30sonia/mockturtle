@@ -179,10 +179,15 @@ public:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    stuck_at_check();
+    if ( ps.num_stuck_at > 0 )
+    {
+      stuck_at_check();
+    }
 
     if ( ps.observability_type2 )
+    {
       observability_check();
+    }
 
     if ( ps.distinguish_nodes )
     {
