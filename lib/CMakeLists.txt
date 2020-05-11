@@ -74,3 +74,8 @@ if (NOT TARGET bill)
     endif()
   endif()
 endif()
+
+if (NOT TARGET abcresub)
+  add_library(abcresub INTERFACE)
+  target_include_directories(abcresub INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/abcresub)
+endif()
