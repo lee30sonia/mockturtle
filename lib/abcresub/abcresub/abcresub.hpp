@@ -855,17 +855,22 @@ static Gia_ResbMan_t * s_pResbMan = NULL;
 
 void Abc_ResubPrepareManager( int nWords )
 {
-    if ( s_pResbMan != NULL )
-        Gia_ResbFree( s_pResbMan );
+    if ( s_pResbMan != nullptr )
+    {
+      Gia_ResbFree( s_pResbMan );
+      s_pResbMan = nullptr;
+    }
     if ( nWords > 0 )
-        s_pResbMan = Gia_ResbAlloc( nWords );
+    {
+      s_pResbMan = Gia_ResbAlloc( nWords );
+    }
 }
 
 int Abc_ResubComputeFunction( void ** ppDivs, int nDivs, int nWords, int nLimit, int fDebug, int fVerbose, int ** ppArray )
 {
     Vec_Ptr_t Divs = { nDivs, nDivs, ppDivs };
     assert( s_pResbMan != NULL ); // first call Abc_ResubPrepareManager()
-    Gia_ManResubPerform( s_pResbMan, &Divs, nWords, nLimit, fDebug, 0 );
+    Gia_ManResubPerform( s_pResbMan, &Divs, nWords, nLimit, fDebug, fVerbose );
     if ( fVerbose )
     {
         Gia_ManResubPrint( s_pResbMan->vGates, nDivs );
