@@ -85,9 +85,9 @@ public:
 
   void compute_function()
   {
-    int ArraySize;
-    int * pArray;
-    ArraySize = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, 4, /* debug = */1, /* verbose = */1, &pArray );
+    int index_list_size;
+    int * index_list;
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, 4, /* debug = */0, /* verbose = */0, &index_list );
   }
 
 protected:
