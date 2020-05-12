@@ -42,7 +42,7 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#cex0", "#cex1", "#div0", "#div1", "t_patgen", "t_resub", "t_sim", "t_SAT", "cec" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#cex0+1", "#cexk", "#div0+1", "#divk", "t_resub", "t_sim", "t_SAT", "t_k", "cec" );
 
   //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   for ( auto const& benchmark : iwls_benchmarks() )
@@ -59,8 +59,8 @@ int main()
 
     ps.max_pis = 10u;
     ps.max_divisors = 200u;
-    ps.max_inserts = 1u;
-    ps.progress = false;
+    ps.max_inserts = 4u;
+    ps.progress = true;
     ps.check_const = false;
 
     bool useExternal = false;
@@ -90,7 +90,7 @@ int main()
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0, st.num_cex_div1, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0 + st.num_cex_div1, st.num_cex_divk, st.num_div0_accepts + st.num_div1_accepts, st.num_divk_accepts, /*to_seconds( st_pat.time_total ),*/ to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_compute_function ), cec );
   }
 
   exp.save();

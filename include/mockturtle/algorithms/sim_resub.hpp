@@ -35,6 +35,7 @@
 #include <mockturtle/networks/aig.hpp>
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
+#include "../utils/abc_resub.hpp"
 #include "../views/depth_view.hpp"
 #include "../views/fanout_view.hpp"
 #include <mockturtle/algorithms/simulation.hpp>
@@ -121,6 +122,11 @@ struct simresub_stats
   stopwatch<>::duration time_div1_compare{0};
   uint32_t num_div1_accepts{0};
 
+  /* time & number of k-resub */
+  stopwatch<>::duration time_resubk{0};
+  stopwatch<>::duration time_compute_function{0};
+  uint32_t num_divk_accepts{0};
+
   /* time & number of (~)r == d1 ^ d2 node substitutions */
   stopwatch<>::duration time_xor{0};
   uint32_t num_xor_accepts{0};
@@ -132,6 +138,7 @@ struct simresub_stats
 
   uint32_t num_cex_div0{0};
   uint32_t num_cex_div1{0};
+  uint32_t num_cex_divk{0};
   uint32_t num_cex_xor{0};
 
   /*! \brief Total number of gain  */
@@ -361,6 +368,11 @@ public:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
+    if ( ps.max_inserts > 1u )
+    {
+      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+    }
+
     if ( ps.check_const )
     {
       auto const zero = sim.compute_constant( false );
@@ -412,6 +424,10 @@ public:
 
         return true; /* next */
       });
+    if ( ps.max_inserts > 1u )
+    {
+      abcresub::Abc_ResubPrepareManager( 0 );
+    }
   }
 
 private:
@@ -624,6 +640,24 @@ private:
       return g; /* accepted resub */
     }
 
+    if ( ps.max_inserts < 2 || num_mffc <= 2 )
+    {
+      return std::nullopt;
+    }
+
+    /* try k-resub */
+    uint32_t size = 0;
+    g = call_with_stopwatch( st.time_resubk, [&]() {
+        return resub_divk( root, std::min( num_mffc, int( ps.max_inserts ) ), size );
+      } );
+    if ( g )
+    {
+      ++st.num_divk_accepts;
+      last_gain = num_mffc - size;
+      return g; /* accepted resub */
+    }
+
+#if 0
     if ( ps.max_inserts < 3 || num_mffc <= 3 )
     {
       return std::nullopt;
@@ -639,6 +673,7 @@ private:
       last_gain = num_mffc - 3;
       return g; /* accepted resub */
     }
+#endif
 
     return std::nullopt;
   }
@@ -652,6 +687,11 @@ private:
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
+
+    if ( ps.max_inserts > 1u )
+    {
+      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+    }
   }
 
   kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
@@ -860,6 +900,79 @@ private:
             found_cex();
           }
         }
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<signal> resub_divk( node const& root, uint32_t num_inserts, uint32_t& size ) 
+  {
+    auto tt = get_tt( root );
+    auto ntt = get_tt( root, true );
+
+    uint64_t const divisor_limit = 30;
+    
+    abc_resub rs( 2ul + std::min( divisor_limit, uint64_t( divs.size() ) ), tts[root].num_blocks() );
+    rs.add_root( root, tts );
+    rs.add_divisors( std::begin( divs ), divs.size() > divisor_limit ? std::begin( divs ) + divisor_limit : std::end( divs ), tts );
+
+    auto const res = call_with_stopwatch( st.time_compute_function, [&]() {
+      return rs.compute_function( num_inserts );
+    });
+    if ( res )
+    {
+      auto const& index_list = *res;
+      uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
+      std::vector<vgate> gates( num_gates );
+      for ( auto i = 0u; i < num_gates; ++i )
+      {
+        fanin f0; f0.idx = uint32_t( ( index_list[2*i] >> 1u ) - 2u ); f0.inv = bool( index_list[2*i] % 2 );
+        fanin f1; f1.idx = uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ); f1.idx = bool( index_list[2*i + 1u] % 2 );
+        gates[i].fanins = { f0, f1 };
+        gates[i].type = f0.idx < f1.idx ? gtype::AND : gtype::XOR;
+      }
+      bool const out_neg = bool( index_list.back() % 2 );
+
+      const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+        return validator.validate( root, divs, gates, out_neg );
+      });
+
+      if ( valid )
+      {
+        size = 0u;
+        std::vector<signal> ckt;
+        for ( auto n : divs )
+        {
+          ckt.emplace_back( ntk.make_signal( n ) );
+        }
+
+        for ( auto g : gates )
+        {
+          auto const f0 = g.fanins[0].inv ? !ckt[g.fanins[0].idx] : ckt[g.fanins[0].idx];
+          auto const f1 = g.fanins[1].inv ? !ckt[g.fanins[1].idx] : ckt[g.fanins[1].idx];
+          if ( g.type == gtype::AND )
+          {
+            ckt.emplace_back( ntk.create_and( f0, f1 ) );
+            ++size;
+          }
+          else if ( g.type == gtype::XOR )
+          {
+            ckt.emplace_back( ntk.create_xor( f0, f1 ) );
+            size += 3;
+          }
+        }
+        if ( size > num_inserts )
+        {
+          std::cout<<"circuit size exceed limit\n";
+          return std::nullopt;
+        }
+        return out_neg ? !ckt.back() : ckt.back();
+      }
+      else
+      {
+        ++st.num_cex_divk;
+        found_cex();
       }
     }
 

@@ -73,6 +73,13 @@ public:
   }
 
   template<class node_type, class truth_table_storage_type>
+  void add_root( node_type const& node, truth_table_storage_type const& tts )
+  {
+    add_divisor( node, tts, true ); /* off-set */
+    add_divisor( node, tts, false ); /* on-set */   
+  }
+
+  template<class node_type, class truth_table_storage_type>
   void add_divisor( node_type const& node, truth_table_storage_type const& tts, bool complement = false )
   {
     assert( abc_tts != nullptr && "assume that memory for truth tables has been allocated" );
@@ -101,11 +108,30 @@ public:
     }
   }
 
-  std::optional<std::vector<gate>> compute_function()
+  std::optional<std::vector<uint32_t>> compute_function( uint32_t num_inserts )
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, 4, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* debug = */0, /* verbose = */0, &index_list );
+
+    if ( index_list_size )
+    {
+      std::vector<uint32_t> vec( index_list_size );
+      for ( auto i = 0; i < index_list_size; ++i ) // probably could be smarter
+      {
+        vec[i] = index_list[i];
+      }
+      return vec;
+    }
+
+    return std::nullopt;
+  }
+
+  std::optional<std::vector<gate>> compute_function( uint32_t num_inserts, bool& output_negation )
+  {
+    int index_list_size;
+    int * index_list;
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -113,12 +139,13 @@ public:
       std::vector<gate> gates( num_gates );
       for ( auto i = 0u; i < num_gates; ++i )
       {
-        gates[i].type = gate_type::AND;
-
-        gate::fanin f0{uint32_t( index_list[2*i] >> 1u ), bool( index_list[2*i] % 2 )};
-        gate::fanin f1{uint32_t( index_list[2*i + 1u] >> 1u ), bool( index_list[2*i + 1u] % 2 )};
+        gate::fanin f0{uint32_t( ( index_list[2*i] >> 1u ) - 2u ), bool( index_list[2*i] % 2 )};
+        gate::fanin f1{uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ), bool( index_list[2*i + 1u] % 2 )};
         gates[i].fanins = { f0, f1 };
+
+        gates[i].type = f0.idx < f1.idx ? gate_type::AND : gate_type::XOR;
       }
+      output_negation = index_list[index_list_size - 1u] % 2;
       return gates;
     }
 
