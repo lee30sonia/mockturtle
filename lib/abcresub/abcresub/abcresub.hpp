@@ -772,6 +772,8 @@ int Gia_ManResubPerform_rec( Gia_ResbMan_t * p, int nLimit )
         }
         if ( Max2 == 0 )
             return -1;
+
+        /*
         if ( Max2 == TopTwoW[0] || Max2 == TopTwoW[1] )
         {
             int fUseOr  = Max2 == TopTwoW[0];
@@ -790,6 +792,7 @@ int Gia_ManResubPerform_rec( Gia_ResbMan_t * p, int nLimit )
                 return Abc_Var2Lit( iNode+1, fUseOr );
             }
         }
+        */
     }
     else
     {
@@ -813,6 +816,8 @@ int Gia_ManResubPerform_rec( Gia_ResbMan_t * p, int nLimit )
         }
         if ( Max1 == 0 )
             return -1;
+
+        /*
         if ( Max1 == TopOneW[0] || Max1 == TopOneW[1] )
         {
             int fUseOr  = Max1 == TopOneW[0];
@@ -828,6 +833,7 @@ int Gia_ManResubPerform_rec( Gia_ResbMan_t * p, int nLimit )
                 return Abc_Var2Lit( iNode, fUseOr );
             }
         }
+        */
     }
     return -1;
 }
