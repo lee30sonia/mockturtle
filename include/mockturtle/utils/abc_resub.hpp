@@ -38,6 +38,24 @@
 namespace mockturtle
 {
 
+enum gate_type
+{
+  AND,
+  XOR,
+};
+
+struct gate
+{
+  struct fanin
+  {
+    uint32_t idx;
+    bool inv{false};
+  };
+
+  std::vector<fanin> fanins;
+  gate_type type{AND};
+};
+
 class abc_resub
 {
 public:
@@ -83,11 +101,28 @@ public:
     }
   }
 
-  void compute_function()
+  std::optional<std::vector<gate>> compute_function()
   {
     int index_list_size;
     int * index_list;
     index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, 4, /* debug = */0, /* verbose = */0, &index_list );
+
+    if ( index_list_size )
+    {
+      uint64_t const num_gates = ( index_list_size - 1u ) / 2u;
+      std::vector<gate> gates( num_gates );
+      for ( auto i = 0u; i < num_gates; ++i )
+      {
+        gates[i].type = gate_type::AND;
+
+        gate::fanin f0{uint32_t( index_list[2*i] >> 1u ), bool( index_list[2*i] % 2 )};
+        gate::fanin f1{uint32_t( index_list[2*i + 1u] >> 1u ), bool( index_list[2*i + 1u] % 2 )};
+        gates[i].fanins = { f0, f1 };
+      }
+      return gates;
+    }
+
+    return std::nullopt;
   }
 
 protected:
