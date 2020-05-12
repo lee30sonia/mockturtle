@@ -911,7 +911,7 @@ private:
     auto tt = get_tt( root );
     auto ntt = get_tt( root, true );
 
-    uint64_t const divisor_limit = 30;
+    uint64_t const divisor_limit = std::min( 10u, num_divs );
     
     abc_resub rs( 2ul + std::min( divisor_limit, uint64_t( divs.size() ) ), tts[root].num_blocks() );
     rs.add_root( root, tts );
@@ -923,6 +923,28 @@ private:
     if ( res )
     {
       auto const& index_list = *res;
+      if ( index_list.size() == 1u ) /* div0 or constant */
+      {
+        const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+          if ( index_list[0] < 2 ) return validator.validate( root, ntk.get_constant( bool( index_list[0] ) ) );
+          assert( index_list[0] >= 4 );
+          return validator.validate( root, bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) );
+        });
+
+        if ( valid )
+        {
+          size = 0u;
+          if ( index_list[0] < 2 ) return ntk.get_constant( bool( index_list[0] ) );
+          else return bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] );
+        }
+        else
+        {
+          ++st.num_cex_divk;
+          found_cex();
+          return std::nullopt;
+        }
+      }
+
       uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
       std::vector<vgate> gates( num_gates );
       for ( auto i = 0u; i < num_gates; ++i )
