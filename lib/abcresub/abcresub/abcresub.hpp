@@ -348,6 +348,7 @@ inline int Gia_ManFindFirstCommonLit( Vec_Int_t * vArr1, Vec_Int_t * vArr2, int 
 
 void Gia_ManFindOneUnateInt( word * pOffSet, word * pOnSet, Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * vUnateLits, Vec_Int_t * vNotUnateVars )
 {
+    (void)pOnSet;
     word * pDiv; int i;
     Vec_IntClear( vUnateLits );
     Vec_IntClear( vNotUnateVars );
@@ -372,6 +373,7 @@ int Gia_ManFindOneUnate( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, Vec_Int
 
 inline int Gia_ManDivCover( word * pOffSet, word * pOnSet, word * pDivA, int ComplA, word * pDivB, int ComplB, int nWords )
 {
+    (void)pOffSet;
     //assert( !Abc_TtIntersectOne(pOffSet, 0, pDivA, ComplA, nWords) );
     //assert( !Abc_TtIntersectOne(pOffSet, 0, pDivB, ComplB, nWords) );
     return !Abc_TtIntersectTwo( pOnSet, 0, pDivA, !ComplA, pDivB, !ComplB, nWords );
@@ -405,6 +407,7 @@ int Gia_ManFindTwoUnate( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, Vec_Int
 
 void Gia_ManFindXorInt( word * pOffSet, word * pOnSet, Vec_Int_t * vBinate, Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * vUnatePairs )
 {
+    (void)pOnSet;
     int i, k, iDiv0, iDiv1;
     Vec_IntForEachEntry( vBinate, iDiv1, i )
     Vec_IntForEachEntryStop( vBinate, iDiv0, k, i )
@@ -431,6 +434,7 @@ int Gia_ManFindXor( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * 
 
 void Gia_ManFindUnatePairsInt( word * pOffSet, word * pOnSet, Vec_Int_t * vBinate, Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * vUnatePairs )
 {
+    (void)pOnSet;
     int n, i, k, iDiv0, iDiv1;
     Vec_IntForEachEntry( vBinate, iDiv1, i )
     Vec_IntForEachEntryStop( vBinate, iDiv0, k, i )
@@ -461,7 +465,8 @@ void Gia_ManFindUnatePairs( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, Vec_
 
 void Gia_ManDeriveDivPair( int iDiv, Vec_Ptr_t * vDivs, int nWords, word * pRes )
 {
-    int fComp = Abc_LitIsCompl(iDiv);
+
+    //int fComp = Abc_LitIsCompl(iDiv);
     int iDiv0 = Abc_Lit2Var(iDiv) & 0x7FFF;
     int iDiv1 = Abc_Lit2Var(iDiv) >> 15;
     word * pDiv0 = (word *)Vec_PtrEntry(vDivs, Abc_Lit2Var(iDiv0));
@@ -538,6 +543,7 @@ int Gia_ManFindGateGate( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, Vec_Int
 
 void Gia_ManComputeLitWeightsInt( word * pOffSet, word * pOnSet, Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * vUnateLits, Vec_Int_t * vUnateLitsW )
 {
+    (void)pOffSet;
     int i, iLit;
     Vec_IntClear( vUnateLitsW );
     Vec_IntForEachEntry( vUnateLits, iLit, i )
@@ -578,6 +584,7 @@ void Gia_ManComputeLitWeights( word * pSets[2], Vec_Ptr_t * vDivs, int nWords, V
 
 void Gia_ManComputePairWeightsInt( word * pOffSet, word * pOnSet, Vec_Ptr_t * vDivs, int nWords, Vec_Int_t * vUnatePairs, Vec_Int_t * vUnatePairsW )
 {
+    (void)pOffSet;
     int i, iPair;
     Vec_IntClear( vUnatePairsW );
     Vec_IntForEachEntry( vUnatePairs, iPair, i )
