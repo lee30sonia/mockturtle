@@ -140,6 +140,23 @@ public:
 	}
 #pragma endregion
 
+	void bookmark()
+	{
+		/* do not handle number of variables and clauses for now */
+		solver_.push();
+	}
+
+	void rollback( uint32_t n = 1u )
+	{
+		solver_.pop( n );
+	}
+
+	void set_random_phase( uint32_t seed = 0u )
+	{
+		solver_.set("sat.random_seed", seed);
+		solver_.set("phase_selection", 5u);
+	}
+
 private:
 	z3::context ctx_;
 	z3::solver solver_;
