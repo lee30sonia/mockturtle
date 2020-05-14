@@ -607,7 +607,7 @@ private:
     
     /* update statistics */
     st.num_total_divisors += num_divs;
-
+#if 1
     /* consider equal nodes */
     auto g = call_with_stopwatch( st.time_resub0, [&]() {
         return resub_div0( root, required );
@@ -644,11 +644,11 @@ private:
     {
       return std::nullopt;
     }
-
+#endif
     /* try k-resub */
     uint32_t size = 0;
     g = call_with_stopwatch( st.time_resubk, [&]() {
-        return resub_divk( root, std::min( num_mffc, int( ps.max_inserts ) ), size );
+        return resub_divk( root, std::min( num_mffc - 1, int( ps.max_inserts ) ), size );
       } );
     if ( g )
     {
@@ -947,14 +947,22 @@ private:
 
       uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
       std::vector<vgate> gates( num_gates );
+      size = 0u;
       for ( auto i = 0u; i < num_gates; ++i )
       {
         fanin f0; f0.idx = uint32_t( ( index_list[2*i] >> 1u ) - 2u ); f0.inv = bool( index_list[2*i] % 2 );
         fanin f1; f1.idx = uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ); f1.idx = bool( index_list[2*i + 1u] % 2 );
         gates[i].fanins = { f0, f1 };
         gates[i].type = f0.idx < f1.idx ? gtype::AND : gtype::XOR;
+        size += ( gates[i].type == gtype::AND )? 1u: 1u;
       }
       bool const out_neg = bool( index_list.back() % 2 );
+
+      if ( size > num_inserts )
+      {
+        std::cout<<"circuit size exceed limit\n";
+        return std::nullopt;
+      }
 
       const auto valid = call_with_stopwatch( st.time_sat, [&]() {
         return validator.validate( root, divs, gates, out_neg );
@@ -962,7 +970,6 @@ private:
 
       if ( valid )
       {
-        size = 0u;
         std::vector<signal> ckt;
         for ( auto n : divs )
         {
@@ -976,19 +983,13 @@ private:
           if ( g.type == gtype::AND )
           {
             ckt.emplace_back( ntk.create_and( f0, f1 ) );
-            ++size;
           }
           else if ( g.type == gtype::XOR )
           {
             ckt.emplace_back( ntk.create_xor( f0, f1 ) );
-            size += 3;
           }
         }
-        if ( size > num_inserts )
-        {
-          std::cout<<"circuit size exceed limit\n";
-          return std::nullopt;
-        }
+        
         return out_neg ? !ckt.back() : ckt.back();
       }
       else
