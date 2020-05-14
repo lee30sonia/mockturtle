@@ -179,10 +179,23 @@ public:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    stuck_at_check();
+    if ( ps.num_stuck_at > 0 )
+    {
+      stuck_at_check();
+      if ( ps.substitute_const )
+      {
+        for ( auto n : const_nodes )
+        {
+          if ( !ntk.is_dead( ntk.get_node( n ) ) )
+            ntk.substitute_node( ntk.get_node( n ), ntk.get_constant( ntk.is_complemented( n ) ) );
+        }
+      }
+    }
 
     if ( ps.observability_type2 )
+    {
       observability_check();
+    }
 
     if ( ps.distinguish_nodes )
     {
@@ -471,11 +484,7 @@ private:
         {
           //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
           ++st.num_constant;
-          if ( ps.substitute_const )
-          {
-            auto g = ntk.get_constant( !value );
-            ntk.substitute_node( n, g );
-          }
+          const_nodes.emplace_back( value ? ntk.make_signal( n ) : !ntk.make_signal( n ) );
           return true; /* next gate */
         }
       }
@@ -645,6 +654,7 @@ private:
   uint32_t max_id;
   
   TT tts;
+  std::vector<signal> const_nodes;
 
   std::default_random_engine random;
 
