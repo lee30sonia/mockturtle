@@ -74,4 +74,9 @@ inline void Vec_WrdPush( Vec_Wrd_t * p, word Entry )
     p->pArray[p->nSize++] = Entry;
 }
 
+inline int Vec_WrdSize( Vec_Wrd_t * p )
+{
+    return p->nSize;
+}
+
 } /* abcresub */

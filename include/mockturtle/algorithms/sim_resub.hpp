@@ -33,6 +33,7 @@
 #pragma once
 
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/xag.hpp>
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
 #include "../utils/abc_resub.hpp"
@@ -52,6 +53,12 @@ struct simresub_params
 {
   /*! \brief Maximum number of divisors to consider. */
   uint32_t max_divisors{150};
+
+  /*! \brief Maximum number of divisors to consider in computing k-resub. */
+  uint32_t max_divisors_k{10};
+
+  /*! \brief Maximum number of trials to call the engine for computing k-resub. */
+  uint32_t num_trials_k{10};
 
   /*! \brief Maximum number of nodes added by resubstitution. */
   uint32_t max_inserts{2};
@@ -640,6 +647,20 @@ private:
       return g; /* accepted resub */
     }
 
+    if constexpr ( std::is_same<NtkBase, xag_network>::value )
+    {
+      /* consider X(N)OR resub */
+      g = call_with_stopwatch( st.time_xor, [&]() {
+          return resub_xor( root, required );
+        } );
+      if ( g )
+      {
+        ++st.num_xor_accepts;
+        last_gain = num_mffc - 1;
+        return g; /* accepted resub */
+      }
+    }
+
     if ( ps.max_inserts < 2 || num_mffc <= 2 )
     {
       return std::nullopt;
@@ -908,94 +929,105 @@ private:
 
   std::optional<signal> resub_divk( node const& root, uint32_t num_inserts, uint32_t& size ) 
   {
-    auto tt = get_tt( root );
-    auto ntt = get_tt( root, true );
-
-    uint64_t const divisor_limit = std::min( 10u, num_divs );
+    uint64_t const divisor_limit = std::min( ps.max_divisors_k, num_divs );
     
-    abc_resub rs( 2ul + std::min( divisor_limit, uint64_t( divs.size() ) ), tts[root].num_blocks() );
-    rs.add_root( root, tts );
-    rs.add_divisors( std::begin( divs ), divs.size() > divisor_limit ? std::begin( divs ) + divisor_limit : std::end( divs ), tts );
-
-    auto const res = call_with_stopwatch( st.time_compute_function, [&]() {
-      return rs.compute_function( num_inserts );
-    });
-    if ( res )
+    for ( auto j = 0u; j < ps.num_trials_k; ++j )
     {
-      auto const& index_list = *res;
-      if ( index_list.size() == 1u ) /* div0 or constant */
+      abc_resub rs( 2ul + std::min( divisor_limit, uint64_t( divs.size() ) ), tts[root].num_blocks() );
+      rs.add_root( root, tts );
+      rs.add_divisors( std::begin( divs ), divs.size() > divisor_limit ? std::begin( divs ) + divisor_limit : std::end( divs ), tts );
+
+      auto const res = call_with_stopwatch( st.time_compute_function, [&]() {
+        if constexpr ( std::is_same<NtkBase, xag_network>::value )
+          return rs.compute_function( num_inserts, true );
+        else
+          return rs.compute_function( num_inserts, false );
+      });
+      if ( res )
       {
+        auto const& index_list = *res;
+        if ( index_list.size() == 1u ) /* div0 or constant */
+        {
+          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
+            if ( index_list[0] < 2 ) return validator.validate( root, ntk.get_constant( bool( index_list[0] ) ) );
+            assert( index_list[0] >= 4 );
+            return validator.validate( root, bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) );
+          });
+
+          if ( valid )
+          {
+            size = 0u;
+            if ( index_list[0] < 2 ) return ntk.get_constant( bool( index_list[0] ) );
+            else return bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] );
+          }
+          else
+          {
+            ++st.num_cex_divk;
+            found_cex();
+            return std::nullopt;
+          }
+        }
+
+        uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
+        std::vector<vgate> gates( num_gates );
+        size = 0u;
+        for ( auto i = 0u; i < num_gates; ++i )
+        {
+          fanin f0; f0.idx = uint32_t( ( index_list[2*i] >> 1u ) - 2u ); f0.inv = bool( index_list[2*i] % 2 );
+          fanin f1; f1.idx = uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ); f1.inv = bool( index_list[2*i + 1u] % 2 );
+          gates[i].fanins = { f0, f1 };
+          gates[i].type = f0.idx < f1.idx ? gtype::AND : gtype::XOR;
+          
+          if constexpr ( std::is_same<NtkBase, xag_network>::value )
+            ++size;
+          else
+            size += ( gates[i].type == gtype::AND )? 1u: 3u;
+        }
+        bool const out_neg = bool( index_list.back() % 2 );
+
+        if ( size > num_inserts )
+        {
+          std::cout<<"circuit size exceed limit\n";
+          return std::nullopt;
+        }
+
         const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-          if ( index_list[0] < 2 ) return validator.validate( root, ntk.get_constant( bool( index_list[0] ) ) );
-          assert( index_list[0] >= 4 );
-          return validator.validate( root, bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) );
+          return validator.validate( root, divs, gates, out_neg );
         });
 
         if ( valid )
         {
-          size = 0u;
-          if ( index_list[0] < 2 ) return ntk.get_constant( bool( index_list[0] ) );
-          else return bool( index_list[0] % 2 ) ? !ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] ) : ntk.make_signal( divs[(index_list[0] >> 1u) - 2u] );
+          std::vector<signal> ckt;
+          for ( auto n : divs )
+          {
+            ckt.emplace_back( ntk.make_signal( n ) );
+          }
+
+          for ( auto g : gates )
+          {
+            auto const f0 = g.fanins[0].inv ? !ckt[g.fanins[0].idx] : ckt[g.fanins[0].idx];
+            auto const f1 = g.fanins[1].inv ? !ckt[g.fanins[1].idx] : ckt[g.fanins[1].idx];
+            if ( g.type == gtype::AND )
+            {
+              ckt.emplace_back( ntk.create_and( f0, f1 ) );
+            }
+            else if ( g.type == gtype::XOR )
+            {
+              ckt.emplace_back( ntk.create_xor( f0, f1 ) );
+            }
+          }
+          
+          return out_neg ? !ckt.back() : ckt.back();
         }
         else
         {
           ++st.num_cex_divk;
           found_cex();
-          return std::nullopt;
         }
       }
-
-      uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
-      std::vector<vgate> gates( num_gates );
-      size = 0u;
-      for ( auto i = 0u; i < num_gates; ++i )
+      else /* loop until no result can be found by the engine */
       {
-        fanin f0; f0.idx = uint32_t( ( index_list[2*i] >> 1u ) - 2u ); f0.inv = bool( index_list[2*i] % 2 );
-        fanin f1; f1.idx = uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ); f1.idx = bool( index_list[2*i + 1u] % 2 );
-        gates[i].fanins = { f0, f1 };
-        gates[i].type = f0.idx < f1.idx ? gtype::AND : gtype::XOR;
-        size += ( gates[i].type == gtype::AND )? 1u: 1u;
-      }
-      bool const out_neg = bool( index_list.back() % 2 );
-
-      if ( size > num_inserts )
-      {
-        std::cout<<"circuit size exceed limit\n";
         return std::nullopt;
-      }
-
-      const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-        return validator.validate( root, divs, gates, out_neg );
-      });
-
-      if ( valid )
-      {
-        std::vector<signal> ckt;
-        for ( auto n : divs )
-        {
-          ckt.emplace_back( ntk.make_signal( n ) );
-        }
-
-        for ( auto g : gates )
-        {
-          auto const f0 = g.fanins[0].inv ? !ckt[g.fanins[0].idx] : ckt[g.fanins[0].idx];
-          auto const f1 = g.fanins[1].inv ? !ckt[g.fanins[1].idx] : ckt[g.fanins[1].idx];
-          if ( g.type == gtype::AND )
-          {
-            ckt.emplace_back( ntk.create_and( f0, f1 ) );
-          }
-          else if ( g.type == gtype::XOR )
-          {
-            ckt.emplace_back( ntk.create_xor( f0, f1 ) );
-          }
-        }
-        
-        return out_neg ? !ckt.back() : ckt.back();
-      }
-      else
-      {
-        ++st.num_cex_divk;
-        found_cex();
       }
     }
 
@@ -1008,13 +1040,12 @@ private:
     auto tt = get_tt( root );
     auto ntt = get_tt( root, true );
 
-    //for ( auto i = 0u; i < num_divs; ++i )
-    for ( int i = num_divs-1; i > 0; --i )
+    for ( auto i = 0u; i < num_divs - 1; ++i )
     {
       auto const& s0 = divs.at( i );
       auto const& tt_s0 = tts[s0];
 
-      for ( int j = i - 1; j >= 0; --j )
+      for ( auto j = i + 1; j < num_divs; ++j )
       {
         auto const& s1 = divs.at( j );
         auto const& tt_s1 = tts[s1];

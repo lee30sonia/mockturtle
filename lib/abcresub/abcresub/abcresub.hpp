@@ -852,7 +852,7 @@ inline void Gia_ManDeriveDivPair( int iDiv, Vec_Ptr_t * vDivs, int nWords, word 
     word * pDiv1 = (word *)Vec_PtrEntry(vDivs, Abc_Lit2Var(iDiv1));
     if ( iDiv0 < iDiv1 )
     {
-        assert( !fComp );
+        assert( !fComp ); (void)fComp;
         Abc_TtAndCompl( pRes, pDiv0, Abc_LitIsCompl(iDiv0), pDiv1, Abc_LitIsCompl(iDiv1), nWords );
     }
     else 
@@ -1076,6 +1076,7 @@ inline int Gia_ManResubPerform_rec( Gia_ResbMan_t * p, int nLimit )
     }
     if ( p->fUseXor )
     {
+        printf("finding XOR\n");
         iResLit = Gia_ManFindXor( p->pSets, p->vDivs, p->nWords, p->vBinateVars, p->vUnatePairs, p->fVerbose );
         if ( iResLit >= 0 ) // xor
         {
@@ -1305,8 +1306,36 @@ inline int Abc_ResubComputeFunction( void ** ppDivs, int nDivs, int nWords, int 
     return Vec_IntSize(s_pResbMan->vGates);
 }
 
-#if 0
-inline void Abc_ResubDumpProblem( char * pFileName, void ** ppDivs, int nDivs, int nWords )
+inline void Gia_ManSimPatWriteOne( FILE * pFile, word * pSim, int nWords )
+{
+    int k, Digit, nDigits = nWords*16;
+    for ( k = 0; k < nDigits; k++ )
+    {
+        Digit = (int)((pSim[k/16] >> ((k%16) * 4)) & 15);
+        if ( Digit < 10 )
+            fprintf( pFile, "%d", Digit );
+        else
+            fprintf( pFile, "%c", 'A' + Digit-10 );
+    }
+    fprintf( pFile, "\n" );
+}
+inline void Gia_ManSimPatWrite( const char * pFileName, Vec_Wrd_t * vSimsIn, int nWords )
+{
+    int i, nNodes = Vec_WrdSize(vSimsIn) / nWords;
+    FILE * pFile = fopen( pFileName, "wb" );
+    if ( pFile == NULL )
+    {
+        printf( "Cannot open file \"%s\" for writing.\n", pFileName );
+        return;
+    }
+    assert( Vec_WrdSize(vSimsIn) % nWords == 0 );
+    for ( i = 0; i < nNodes; i++ )
+        Gia_ManSimPatWriteOne( pFile, Vec_WrdEntryP(vSimsIn, i*nWords), nWords );
+    fclose( pFile );
+    printf( "Written %d words of simulation data for %d objects into file \"%s\".\n", nWords, Vec_WrdSize(vSimsIn)/nWords, pFileName );
+}
+
+inline void Abc_ResubDumpProblem( const char * pFileName, void ** ppDivs, int nDivs, int nWords )
 {
     Vec_Wrd_t * vSims = Vec_WrdAlloc( nDivs * nWords );
     word ** pDivs = (word **)ppDivs;
@@ -1317,7 +1346,7 @@ inline void Abc_ResubDumpProblem( char * pFileName, void ** ppDivs, int nDivs, i
     Gia_ManSimPatWrite( pFileName, vSims, nWords );
     Vec_WrdFree( vSims );
 }
-
+#if 0
 /**Function*************************************************************
 
   Synopsis    [Top level.]

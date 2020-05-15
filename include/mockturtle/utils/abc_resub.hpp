@@ -108,11 +108,11 @@ public:
     }
   }
 
-  std::optional<std::vector<uint32_t>> compute_function( uint32_t num_inserts )
+  std::optional<std::vector<uint32_t>> compute_function( uint32_t num_inserts, bool useXOR = false )
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, 0, 0, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nChoice = */0, (int)useXOR, /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -127,11 +127,11 @@ public:
     return std::nullopt;
   }
 
-  std::optional<std::vector<gate>> compute_function( uint32_t num_inserts, bool& output_negation )
+  std::optional<std::vector<gate>> compute_function( bool& output_negation, uint32_t num_inserts, bool useXOR = false )
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, 0, 0, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nChoice = */0, (int)useXOR, /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -150,6 +150,11 @@ public:
     }
 
     return std::nullopt;
+  }
+
+  void dump( std::string file = "dump.txt" )
+  {
+    abcresub::Abc_ResubDumpProblem( file.c_str(), (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table );
   }
 
 protected:
