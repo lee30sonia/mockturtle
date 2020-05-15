@@ -44,8 +44,10 @@ inline int      Abc_LitNotCond( int Lit, int c )       { assert(Lit >= 0); retur
 
 void Abc_SortMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End, int * pOut )
 {
-    //int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
-    //int * pOutBeg = pOut;
+    int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
+    int * pOutBeg = pOut;
+    (void)nEntries;
+    (void)pOutBeg;
     while ( p1Beg < p1End && p2Beg < p2End )
     {
         if ( *p1Beg == *p2Beg )
@@ -112,8 +114,10 @@ void Abc_MergeSort( int * pInput, int nSize )
 
 void Abc_MergeSortCostMerge( int * p1Beg, int * p1End, int * p2Beg, int * p2End, int * pOut )
 {
-    //int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
-    //int * pOutBeg = pOut;
+    int nEntries = (p1End - p1Beg) + (p2End - p2Beg);
+    int * pOutBeg = pOut;
+    (void)nEntries;
+    (void)pOutBeg;
     while ( p1Beg < p1End && p2Beg < p2End )
     {
         if ( p1Beg[1] == p2Beg[1] )

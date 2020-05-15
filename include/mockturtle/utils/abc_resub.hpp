@@ -112,7 +112,7 @@ public:
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, 0, 0, /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -131,7 +131,7 @@ public:
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, 0, 0, /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {

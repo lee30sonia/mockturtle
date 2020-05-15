@@ -124,4 +124,15 @@ inline int Vec_IntTwoFindCommon( Vec_Int_t * vArr1, Vec_Int_t * vArr2, Vec_Int_t
     return Vec_IntSize(vArr);
 }
 
+inline Vec_Int_t * Vec_IntDup( Vec_Int_t * pVec )
+{
+    Vec_Int_t * p;
+    p = ABC_ALLOC( Vec_Int_t, 1 );
+    p->nSize  = pVec->nSize;
+    p->nCap   = pVec->nSize;
+    p->pArray = p->nCap? ABC_ALLOC( int, p->nCap ) : NULL;
+    memcpy( p->pArray, pVec->pArray, sizeof(int) * (size_t)pVec->nSize );
+    return p;
+}
+
 } /* namespace abcresub */

@@ -92,6 +92,20 @@ inline int Abc_TtIsConst0( word * pIn1, int nWords )
     return 1;
 }
 
+inline void Abc_TtClear( word * pOut, int nWords )
+{
+    int w;
+    for ( w = 0; w < nWords; w++ )
+        pOut[w] = 0;
+}
+
+inline void Abc_TtFill( word * pOut, int nWords )
+{
+    int w;
+    for ( w = 0; w < nWords; w++ )
+        pOut[w] = ~(word)0;
+}
+
 inline void Abc_TtAndCompl( word * pOut, word * pIn1, int fCompl1, word * pIn2, int fCompl2, int nWords )
 {
     int w;
