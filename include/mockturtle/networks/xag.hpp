@@ -1117,10 +1117,12 @@ public:
       if ( c1.index < c2.index )
       {
         result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) & ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
+        result.mask_bits();
       }
       else
       {
         result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) ^ ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
+        result.mask_bits();
       }
     }
   }
