@@ -59,11 +59,12 @@ int main()
     ps.num_random_pattern = 256;
     ps.observability_type1 = true;
     ps.observability_type2 = true;
-    ps.observability_levels = 5;
+    ps.odc_levels = 5;
     ps.write_pats = "256sa1obs/" + benchmark + ".pat";
     //ps.patfile = "test.pat";
     ps.random_seed = 1689;
     ps.progress = false;
+    ps.verbose = true;
 
     pattern_generation( aig, ps, &st );
     aig = cleanup_dangling( aig );
