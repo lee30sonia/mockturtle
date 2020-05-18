@@ -28,11 +28,13 @@
 
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
+#include <lorina/verilog.hpp>
 #include <mockturtle/algorithms/sim_resub.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/pattern_generation.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/verilog_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
 
 #include <experiments.hpp>
@@ -47,12 +49,12 @@ int main()
   //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "cavlc" ) continue;
+    //if ( benchmark != "iwls2005/mem_ctrl" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
-    aig_network aig, orig;
+    aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
-    lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( orig ) );
+    //lorina::read_verilog( "optimized_abc/" + benchmark + ".v", verilog_reader( aig ) );
 
     simresub_params ps;
     simresub_stats st;
@@ -60,45 +62,51 @@ int main()
     ps.max_pis = 10u; //100u; //8u;
     ps.max_divisors = 200u;
     ps.max_inserts = 1u;
-    ps.progress = false;
-    //ps.use_odc = false;
-    //ps.odc_solve_limit = 10u;
+    ps.progress = true;
+    ps.odc_levels = 5;
     ps.check_const = true;
 
     bool useExternal = true;
-    auto pat_path = "sa5/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    auto pat_path = "256sa1obs/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator sim(1,1);
     if ( useExternal )
     {
-      sim = partial_simulator( pat_path + benchmark + ".pat", "rand/" + benchmark + ".pat", 4096 );
-      //sim = partial_simulator( pat_path + benchmark + ".pat" );
+      //sim = partial_simulator( pat_path + benchmark + ".pat", "rand/" + benchmark + ".pat", 4096 );
+      sim = partial_simulator( pat_path + benchmark + ".pat" );
       st_pat.num_total_patterns = sim.compute_constant( false ).num_bits();
     }
     else
     {
       patgen_params ps_pat;
       ps_pat.random_seed = 1689;
-      ps_pat.num_random_pattern = 0;
-      ps_pat.num_stuck_at = 5;
+      ps_pat.num_random_pattern = 16384;
+      ps_pat.num_stuck_at = 0;
       //ps_pat.distinguish_nodes = true;
       //ps_pat.observability_type1 = true;
       //ps_pat.observability_type2 = true;
-      ps_pat.write_pats = "sa5/" + benchmark + ".pat";
+      //ps_pat.write_pats = "sa5/" + benchmark + ".pat";
       //ps_pat.patfile = "rand/" + benchmark + ".pat";
       sim = pattern_generation( aig, ps_pat, &st_pat );
       //std::cout << "# div0 pats = " << st_pat.num_div0_pats << "\n";
       aig = cleanup_dangling( aig );
     }
 
+    const uint32_t size0 = aig.num_gates();
     sim_resubstitution( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
+    //const uint32_t size1 = aig.num_gates();
+    //sim_resubstitution( aig, sim, ps, &st );
+    //aig = cleanup_dangling( aig );
+    //const uint32_t size2 = aig.num_gates();
+    //sim_resubstitution( aig, sim, ps, &st );
+    //aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
     //std::cout << "num_total_divisors = " << st.num_total_divisors << std::endl;
-    exp( benchmark, aig.num_pis(), orig.num_gates(), orig.num_gates() - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0, st.num_cex_div1, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), size0, size0 - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0, st.num_cex_div1, st.num_div0_accepts, st.num_div1_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();
