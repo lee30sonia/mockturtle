@@ -281,7 +281,7 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, true, true>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::z3, true, true>;
   using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
   using gtype = typename validator_t::gate_type;
@@ -406,6 +406,7 @@ public:
 
         /* update network */
         call_with_stopwatch( st.time_callback, [&]() {
+            if ( ps.odc_levels != 0 ) validator.update();
             return callback( ntkbase, n, *g );
           });
 
@@ -753,7 +754,11 @@ private:
           return validator.validate( root, g );
         });
 
-        if ( valid )
+        if ( !valid ) /* timeout */
+        {
+          continue;
+        }
+        else if ( *valid )
         {
           return g;
         }
@@ -779,7 +784,7 @@ private:
     for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
     {
       auto const& s0 = udivs.positive_divisors.at( i ).first;
-      auto const& tt_s0 = get_tt( s0, ntk.is_complemented(s0) );
+      auto const& tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
       auto const& w_s0 = udivs.positive_divisors.at( i ).second;
       if ( w_s0 < uint32_t( w / 2 ) )
         break;
@@ -790,7 +795,7 @@ private:
           break;
 
         auto const& s1 = udivs.positive_divisors.at( j ).first;
-        auto const& tt_s1 = get_tt( s1, ntk.is_complemented(s1) );
+        auto const& tt_s1 = get_tt( ntk.get_node( s1 ), ntk.is_complemented(s1) );
 
         const auto isor = call_with_stopwatch( st.time_div1_compare, [&]() {
             return is_or( tt_s0, tt_s1, tt);
@@ -806,7 +811,11 @@ private:
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, true );
           });
 
-          if ( valid )
+          if ( !valid ) /* timeout */
+          {
+            continue;
+          }
+          else if ( *valid )
           {
             return ntk.create_or( s0, s1 );
           }
@@ -823,7 +832,7 @@ private:
     for ( auto i = 0u; i < udivs.negative_divisors.size(); ++i )
     {
       auto const& s0 = udivs.negative_divisors.at( i ).first;
-      auto const& tt_s0 = get_tt( s0, ntk.is_complemented(s0) );
+      auto const& tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
       auto const& w_s0 = udivs.negative_divisors.at( i ).second;
       if ( w_s0 < uint32_t( nw / 2 ) )
         break;
@@ -834,7 +843,7 @@ private:
           break;
 
         auto const& s1 = udivs.negative_divisors.at( j ).first;
-        auto const& tt_s1 = get_tt( s1, ntk.is_complemented(s1) );
+        auto const& tt_s1 = get_tt( ntk.get_node( s1 ), ntk.is_complemented(s1) );
 
         const auto isand = call_with_stopwatch( st.time_div1_compare, [&]() {
             return is_and( tt_s0, tt_s1, tt);
@@ -850,7 +859,11 @@ private:
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, false );
           });
 
-          if ( valid )
+          if ( !valid ) /* timeout */
+          {
+            continue;
+          }
+          else if ( *valid )
           {
             return ntk.create_and( s0, s1 );
           }
@@ -899,7 +912,11 @@ private:
             return validator.validate( root, {s0, s1}, {gate}, isxnor );
           });
 
-          if ( valid )
+          if ( !valid ) /* timeout */
+          {
+            continue;
+          }
+          else if ( *valid )
           {
             return isxor ? ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) ) : !ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) );
           }
