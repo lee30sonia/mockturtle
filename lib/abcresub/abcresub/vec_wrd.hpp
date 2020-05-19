@@ -78,5 +78,5 @@ inline int Vec_WrdSize( Vec_Wrd_t * p )
 {
     return p->nSize;
 }
-
+  
 } /* abcresub */

@@ -59,9 +59,10 @@ struct gate
 class abc_resub
 {
 public:
-  explicit abc_resub( uint64_t num_divisors, uint64_t num_blocks_per_truth_table )
+  explicit abc_resub( uint64_t num_divisors, uint64_t num_blocks_per_truth_table, uint64_t max_num_divisors = 50ul )
     : num_divisors( num_divisors )
     , num_blocks_per_truth_table( num_blocks_per_truth_table )
+    , max_num_divisors( max_num_divisors )
     , counter(0)
   {
     alloc();
@@ -76,7 +77,7 @@ public:
   void add_root( node_type const& node, truth_table_storage_type const& tts )
   {
     add_divisor( node, tts, true ); /* off-set */
-    add_divisor( node, tts, false ); /* on-set */   
+    add_divisor( node, tts, false ); /* on-set */
   }
 
   template<class node_type, class truth_table_storage_type>
@@ -112,7 +113,7 @@ public:
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nChoice = */0, (int)useXOR, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ), Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nDivsMax */max_num_divisors, /* nChoice = */0, int(useXOR), /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -131,7 +132,7 @@ public:
   {
     int index_list_size;
     int * index_list;
-    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nChoice = */0, (int)useXOR, /* debug = */0, /* verbose = */0, &index_list );
+    index_list_size = abcresub::Abc_ResubComputeFunction( (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table, num_inserts, /* nDivsMax */max_num_divisors, /* nChoice = */0, int(useXOR), /* debug = */0, /* verbose = */0, &index_list );
 
     if ( index_list_size )
     {
@@ -152,7 +153,7 @@ public:
     return std::nullopt;
   }
 
-  void dump( std::string file = "dump.txt" )
+  void dump( std::string const file = "dump.txt" ) const
   {
     abcresub::Abc_ResubDumpProblem( file.c_str(), (void **)Vec_PtrArray( abc_divs ),  Vec_PtrSize( abc_divs ), num_blocks_per_truth_table );
   }
@@ -179,6 +180,7 @@ protected:
 protected:
   uint64_t num_divisors;
   uint64_t num_blocks_per_truth_table;
+  uint64_t max_num_divisors;
   uint64_t counter;
 
   abcresub::Vec_Wrd_t * abc_tts{nullptr};

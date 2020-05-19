@@ -11,6 +11,26 @@
 namespace abcresub
 {
 
+// read/write/flip i-th bit of a bit string table:
+inline int     Abc_TtGetBit( word * p, int i )         { return (int)(p[i>>6] >> (word)(i & 63)) & 1;        }
+inline void    Abc_TtSetBit( word * p, int i )         { p[i>>6] |= (word)(((word)1)<<(i & 63));             }
+inline void    Abc_TtXorBit( word * p, int i )         { p[i>>6] ^= (word)(((word)1)<<(i & 63));             }
+
+// read/write k-th digit d of a quaternary number:
+inline int     Abc_TtGetQua( word * p, int k )         { return (int)(p[k>>5] >> (word)((k<<1) & 63)) & 3;   }
+inline void    Abc_TtSetQua( word * p, int k, int d )  { p[k>>5] |= (word)(((word)d)<<((k<<1) & 63));        }
+inline void    Abc_TtXorQua( word * p, int k, int d )  { p[k>>5] ^= (word)(((word)d)<<((k<<1) & 63));        }
+
+// read/write k-th digit d of a hexadecimal number:
+inline int     Abc_TtGetHex( word * p, int k )         { return (int)(p[k>>4] >> (word)((k<<2) & 63)) & 15;  }
+inline void    Abc_TtSetHex( word * p, int k, int d )  { p[k>>4] |= (word)(((word)d)<<((k<<2) & 63));        }
+inline void    Abc_TtXorHex( word * p, int k, int d )  { p[k>>4] ^= (word)(((word)d)<<((k<<2) & 63));        }
+
+// read/write k-th digit d of a 256-base number:
+inline int     Abc_TtGet256( word * p, int k )         { return (int)(p[k>>3] >> (word)((k<<3) & 63)) & 255; }
+inline void    Abc_TtSet256( word * p, int k, int d )  { p[k>>3] |= (word)(((word)d)<<((k<<3) & 63));        }
+inline void    Abc_TtXor256( word * p, int k, int d )  { p[k>>3] ^= (word)(((word)d)<<((k<<3) & 63));        }
+
 inline int Abc_TtCountOnes( word x )
 {
     x = x - ((x >> 1) & ABC_CONST(0x5555555555555555));   
@@ -287,6 +307,25 @@ inline int Abc_TtIntersectXor( word * pOut, int fComp, word * pIn0, word * pIn1,
         }
     }
     return 0;
+}
+
+inline word Abc_Tt6Stretch( word t, int nVars )
+{
+    assert( nVars >= 0 );
+    if ( nVars == 0 )
+        nVars++, t = (t & 0x1) | ((t & 0x1) << 1);
+    if ( nVars == 1 )
+        nVars++, t = (t & 0x3) | ((t & 0x3) << 2);
+    if ( nVars == 2 )
+        nVars++, t = (t & 0xF) | ((t & 0xF) << 4);
+    if ( nVars == 3 )
+        nVars++, t = (t & 0xFF) | ((t & 0xFF) << 8);
+    if ( nVars == 4 )
+        nVars++, t = (t & 0xFFFF) | ((t & 0xFFFF) << 16);
+    if ( nVars == 5 )
+        nVars++, t = (t & 0xFFFFFFFF) | ((t & 0xFFFFFFFF) << 32);
+    assert( nVars == 6 );
+    return t;
 }
 
 } /* abcresub */
