@@ -57,7 +57,7 @@ struct simresub_params
   uint32_t max_divisors{150};
 
   /*! \brief Maximum number of divisors to consider in computing k-resub. */
-  uint32_t max_divisors_k{10};
+  uint32_t max_divisors_k{50};
 
   /*! \brief Maximum number of trials to call the engine for computing k-resub. */
   uint32_t num_trials_k{10};
@@ -942,14 +942,12 @@ private:
   }
 
   std::optional<signal> resub_divk( node const& root, uint32_t num_inserts, uint32_t& size ) 
-  {
-    uint64_t const divisor_limit = std::min( ps.max_divisors_k, num_divs );
-    
+  {    
     for ( auto j = 0u; j < ps.num_trials_k; ++j )
     {
-      abc_resub rs( 2ul + std::min( divisor_limit, uint64_t( divs.size() ) ), tts[root].num_blocks() );
+      abc_resub rs( 2ul + num_divs, tts[root].num_blocks(), ps.max_divisors_k );
       rs.add_root( root, tts );
-      rs.add_divisors( std::begin( divs ), divs.size() > divisor_limit ? std::begin( divs ) + divisor_limit : std::end( divs ), tts );
+      rs.add_divisors( std::begin( divs ), std::begin( divs ) + num_divs, tts );
 
       auto const res = call_with_stopwatch( st.time_compute_function, [&]() {
         if constexpr ( std::is_same<NtkBase, xag_network>::value )

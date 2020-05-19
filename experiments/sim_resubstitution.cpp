@@ -62,6 +62,8 @@ int main()
     ps.max_pis = 10u;
     ps.max_divisors = 200u;
     ps.max_inserts = 2u;
+    ps.max_divisors_k = 50u;
+    ps.num_trials_k = 100u;
     ps.progress = true;
     ps.check_const = true;
 
