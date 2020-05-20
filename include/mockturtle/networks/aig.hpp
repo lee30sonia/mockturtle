@@ -1048,6 +1048,7 @@ public:
     {
       result.resize( tt1.num_bits() );
       result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) & ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
+      result.mask_bits();
     }
   }
 #pragma endregion

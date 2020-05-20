@@ -24,15 +24,13 @@
  */
 
 #include <string>
-#include <vector>
-
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
-#include <mockturtle/algorithms/pattern_generation.hpp>
-//#include <mockturtle/algorithms/pattern_generation_cnfview.hpp>
-#include <mockturtle/algorithms/cleanup.hpp>
+#include <mockturtle/algorithms/balancing.hpp>
+#include <mockturtle/algorithms/balancing/sop_balancing.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/views/depth_view.hpp>
 
 #include <experiments.hpp>
 
@@ -41,33 +39,39 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT", "cec" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, double, bool, uint32_t, uint32_t, double, bool> exp( "sop_balancing", "benchmark", "size", "depth", "size 4", "depth 4", "RT 4", "cec 4", "size 6", "depth 6", "RT 6", "cec 6" );
 
-  //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
-  for ( auto const& benchmark : iwls_benchmarks() )
+  sop_rebalancing<aig_network> sop_balancing;
+
+  for ( auto const& benchmark : epfl_benchmarks( ~experiments::hyp ) )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
-    auto size_before = aig.num_gates();
 
-    patgen_params ps;
-    patgen_stats st;
+    balancing_params ps;
+    balancing_stats st4, st6;
 
-    ps.num_random_pattern = 4096;
-    ps.observability_type1 = true;
-    ps.observability_type2 = true;
-    ps.observability_levels = 5;
-    ps.write_pats = "qpats/" + benchmark + ".pat";
-    ps.random_seed = 469;
-    ps.progress = false;
-    ps.verbose = false;
+    ps.progress = true;
+    ps.cut_enumeration_ps.cut_size = 4u;
+    const auto aig4 = balancing( aig, {sop_balancing}, ps, &st4 );
 
-    pattern_generation( aig, ps, &st );
-    aig = cleanup_dangling( aig );
+    ps.cut_enumeration_ps.cut_size = 6u;
+    const auto aig6 = balancing( aig, {sop_balancing}, ps, &st6 );
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), size_before - aig.num_gates(), st.num_total_patterns, st.num_total_patterns - ps.num_random_pattern, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    depth_view daig{aig};
+    depth_view daig4{aig4};
+    depth_view daig6{aig6};
+
+    const auto cec4 = abc_cec( aig4, benchmark );
+    const auto cec6 = abc_cec( aig6, benchmark );
+
+    exp( benchmark,
+         aig.num_gates(), daig.depth(),
+         aig4.num_gates(), daig4.depth(),
+         to_seconds( st4.time_total ), cec4,
+         aig6.num_gates(), daig6.depth(),
+         to_seconds( st6.time_total ), cec6 );
   }
 
   exp.save();
