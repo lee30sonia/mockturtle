@@ -57,7 +57,7 @@ int main()
     ps.num_random_pattern = 4096;
     ps.observability_type1 = true;
     ps.observability_type2 = true;
-    ps.observability_levels = 5;
+    ps.odc_levels = 5;
     ps.write_pats = "qpats/" + benchmark + ".pat";
     ps.random_seed = 469;
     ps.progress = false;
