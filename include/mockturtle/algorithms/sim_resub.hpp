@@ -1023,9 +1023,9 @@ private:
           if ( *valid )
           {
             std::vector<signal> ckt;
-            for ( auto n : divs )
+            for ( auto i = 0u; i < num_divs; ++i )
             {
-              ckt.emplace_back( ntk.make_signal( n ) );
+              ckt.emplace_back( ntk.make_signal( divs[i] ) );
             }
 
             for ( auto g : gates )
