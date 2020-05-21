@@ -968,7 +968,7 @@ private:
 
           if ( !valid ) /* timeout */
           {
-            continue;
+            break;
           }
           else
           {
@@ -982,7 +982,7 @@ private:
             {
               ++st.num_cex_divk;
               found_cex();
-              return std::nullopt;
+              continue;
             }
           }
         }
@@ -1011,12 +1011,12 @@ private:
         }
 
         const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-          return validator.validate( root, divs, gates, out_neg );
+          return validator.validate( root, std::begin( divs ), std::begin( divs ) + num_divs, gates, out_neg );
         });
 
         if ( !valid ) /* timeout */
         {
-          continue;
+          break;
         }
         else
         {
