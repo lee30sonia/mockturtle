@@ -67,8 +67,8 @@ int main()
     ps.check_const = true;
 
     bool useExternal = true;
-    auto pat_path = "qpats/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
-    //ps.write_pats = "patCEX/" + benchmark + ".pat";
+    auto pat_path = "256sa1obs/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
     partial_simulator sim(1,1);

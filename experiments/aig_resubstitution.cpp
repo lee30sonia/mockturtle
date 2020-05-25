@@ -41,11 +41,11 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "aig_resubstitution", "benchmark", "size_before", "size_after", "runtime", "equivalent" );
+  experiment<std::string, uint32_t, uint32_t, float, bool> exp( "aig_resubstitution", "benchmark", "size_before", "gain", "runtime", "equivalent" );
 
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    if (benchmark!="iwls2005/DMA") continue;
+    //if (benchmark!="iwls2005/DMA") continue;
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -57,7 +57,7 @@ int main()
     ps.max_divisors = 200u;
     ps.max_inserts = 1u;
     ps.progress = false;
-    ps.verbose = true;
+    ps.verbose = false;
 
     const uint32_t size_before = aig.num_gates();
     aig_resubstitution( aig, ps, &st );
@@ -66,11 +66,11 @@ int main()
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
 
-    exp( benchmark, size_before, aig.num_gates(), to_seconds( st.time_total ), cec );
+    exp( benchmark, size_before, size_before - aig.num_gates(), to_seconds( st.time_total ), cec );
   }
 
   exp.save();
-  exp.compare();
+  exp.table();
 
   return 0;
 }
