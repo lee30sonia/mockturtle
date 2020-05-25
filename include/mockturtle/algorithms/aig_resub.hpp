@@ -195,7 +195,7 @@ public:
       last_gain = num_mffc;
       return g; /* accepted resub */
     }
-return std::nullopt;
+
     /* consider equal nodes */
     g = call_with_stopwatch( st.time_resub0, [&]() {
         return resub_div0( root, required );
