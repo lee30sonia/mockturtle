@@ -35,8 +35,12 @@ int main()
   using namespace mockturtle;
 
   kitty::dynamic_truth_table tt( 5u );
-  kitty::create_from_hex_string( tt, "0FF0F00F" );
-  auto esop = esop_synthesis( tt );
+  kitty::create_from_hex_string( tt, "69696969" );
+
+  esop_synthesis_params ps;
+  ps.r = 2u;
+
+  auto esop = esop_synthesis( tt, ps );
 
   return 0;
 }
