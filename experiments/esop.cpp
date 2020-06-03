@@ -27,20 +27,43 @@
 
 #include "kitty/dynamic_truth_table.hpp"
 #include "kitty/constructors.hpp"
-//#include "kitty/print.hpp"
+#include "kitty/print.hpp"
+#include "kitty/esop.hpp"
 #include "mockturtle/algorithms/esop_rcf.hpp"
+#include "mockturtle/utils/stopwatch.hpp"
 
 int main()
 {
   using namespace mockturtle;
 
-  kitty::dynamic_truth_table tt( 5u );
-  kitty::create_from_hex_string( tt, "69696969" );
+  kitty::dynamic_truth_table tt( 6u );
+  kitty::create_from_hex_string( tt, "688c802028222222" );
 
   esop_synthesis_params ps;
   ps.r = 2u;
+  //ps.best = 7u;
+  stopwatch<>::duration runtime(0);
 
-  auto esop = esop_synthesis( tt, ps );
+  esop_synthesis( tt, ps );
+  call_with_stopwatch( runtime, [&]() {
+    system("./maxixor dump.txt");
+  });
+  std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
 
+  return 0;
+
+
+  for ( auto i = 0u; i < (1<<16); ++i )
+  {
+    tt._bits[0] = i;
+    kitty::print_hex(tt); std::cout<<": ";
+    auto esop = call_with_stopwatch( runtime, [&]() {
+      //return esop_synthesis( tt, ps );
+      return esop_from_pprm( tt );
+    });
+    std::cout << "ESOP of cost " << esop.size() << " found.\n";
+  }
+  std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
+  
   return 0;
 }

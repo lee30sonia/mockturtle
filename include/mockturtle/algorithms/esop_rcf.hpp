@@ -34,6 +34,7 @@
 
 #include <vector>
 #include <cmath>
+#include <fstream>
 
 #include <kitty/cube.hpp>
 #include <kitty/dynamic_truth_table.hpp>
@@ -47,6 +48,7 @@ namespace mockturtle
 
 struct esop_synthesis_params
 {
+  uint32_t best{INT_MAX};
   uint32_t r{2};
 };
 
@@ -254,7 +256,7 @@ class esop_synthesis_impl
 {
 public:
   esop_synthesis_impl( kitty::dynamic_truth_table const& func, esop_synthesis_params const& ps )
-    : func( func ), n( func.num_vars() ), r( ps.r ), block_size( 1u << r ), best( INT_MAX ), ps( ps )
+    : func( func ), n( func.num_vars() ), r( ps.r ), block_size( 1u << r ), best( ps.best ), ps( ps )
   {
     assert( r <= 2u && r <= n && "r parameter too large" );
     switch( r )
@@ -276,14 +278,12 @@ public:
 public:
   std::vector<kitty::cube> run()
   {
-    stopwatch<>::duration runtime(0);
-    call_with_stopwatch( runtime, [&]() {
-      create_covering_variables();
-      construct_RCF();
-      solve_RCF();
-    });
+    create_covering_variables();
+    construct_RCF();
+    write_maxixor();
+    //solve_RCF();
 
-    std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
+    /*std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
     for ( auto& esop : esops )
     {
       for ( auto& c : esop )
@@ -292,10 +292,9 @@ public:
         std::cout << " ";
       }
       std::cout << "\n";
-    }
-    std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
+    }*/
 
-    return esops[0];
+    return std::vector<kitty::cube>();//esops[0];
   }
 
 private:
@@ -357,7 +356,7 @@ private:
   /* cost: current accumulated cost. */
   void naive_solve_rec( uint32_t vid, uint32_t cost )
   {
-    if ( cost > best )
+    if ( cost >= best )
     {
       return;
     }
@@ -371,7 +370,7 @@ private:
         best = cost;
       }
       assert( cost == get_cost() );
-      std::cout<<"new solution found with cost "<<cost<<"\n";
+      //std::cout<<"new solution found with cost "<<cost<<"\n";
       esops.emplace_back( make_esop() );
       return;
     }
@@ -416,6 +415,23 @@ private:
     }
 
     return esop;
+  }
+
+  void write_maxixor( const std::string file_name = "dump.txt" )
+  {
+    std::ofstream os( file_name.c_str(), std::ofstream::out );
+    for ( auto& c : RCF_ ) 
+    {
+      for ( auto i = 0u; i < block_size; ++i )
+      {
+        os << ((c.x2 >> i) & 0x1) << ": ";
+        for ( auto& vid : c.vids )
+        {
+          os << vid * block_size + i << " ";
+        }
+        os << "\n";
+      }
+    }
   }
 
 private:
