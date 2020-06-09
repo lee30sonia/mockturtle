@@ -36,16 +36,18 @@ int main()
 {
   using namespace mockturtle;
 
-  kitty::dynamic_truth_table tt( 6u );
-  kitty::create_from_hex_string( tt, "688c802028222222" );
+  kitty::dynamic_truth_table tt( 5u );
+  kitty::create_from_hex_string( tt, "9637ca81" );
+  //kitty::dynamic_truth_table tt( 6u );
+  //kitty::create_from_hex_string( tt, "688c802028222222" );
 
   esop_synthesis_params ps;
   ps.r = 2u;
   //ps.best = 7u;
   stopwatch<>::duration runtime(0);
 
-  esop_synthesis( tt, ps );
   call_with_stopwatch( runtime, [&]() {
+    esop_synthesis( tt, ps );
     system("./maxixor dump.txt");
   });
   std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";

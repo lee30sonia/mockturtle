@@ -225,6 +225,15 @@ struct xor_constraints_block
     }
   }
 
+  void print_block() const
+  {
+    for ( auto& vid : vids )
+    {
+      std::cout << vid << " ^ ";
+    }
+    std::cout << "\b\b= " << x2 << "\n";
+  }
+
   bool valid( std::vector<g_var> const& vars ) const
   {
     uint32_t tmp = 0u;
@@ -246,6 +255,25 @@ struct xor_constraints_block
       tmp ^= var.x2;
     }
     return tmp ^ x2;
+  }
+
+  /* given the assignments to `g_var`s from `vars[id]` to the end, calculate the right-hand-side value for the remaining equation */
+  uint32_t rhs_current( std::vector<g_var> const& vars, uint32_t const id ) const
+  {
+    uint32_t tmp = x2;
+    for ( auto i = 0u; i < vids.size(); ++i )
+    {
+      if ( vids[i] < id )
+      {
+        //std::cout << vids[i] << " ^ ";
+        continue;
+      }
+      auto const& var = vars[vids[i]];
+      tmp ^= var.x2;
+      //std::cout << vids[i] << "(" << var.x2 << ") ^ ";
+    }
+    //std::cout << "\b\b= " << tmp << "\n";
+    return tmp;
   }
 
   std::vector<uint32_t> vids; /* indices of `g_var`s in `vars` */
@@ -280,10 +308,10 @@ public:
   {
     create_covering_variables();
     construct_RCF();
-    write_maxixor();
-    //solve_RCF();
+    //write_maxixor();
+    solve_RCF();
 
-    /*std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
+    std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
     for ( auto& esop : esops )
     {
       for ( auto& c : esop )
@@ -292,7 +320,7 @@ public:
         std::cout << " ";
       }
       std::cout << "\n";
-    }*/
+    }
 
     return std::vector<kitty::cube>();//esops[0];
   }
@@ -302,6 +330,7 @@ private:
   {
     vars.reserve( pow( 3, n - r ) );
 
+    //for ( int mask1 = ( 1u << (n-r) ) -1; mask1 >=0 ; --mask1 ) 
     for ( auto mask1 = 0u; mask1 < ( 1u << (n-r) ); ++mask1 )
     {
       for ( auto bits1 = 0u; bits1 < ( 1u << (n-r) ); ++bits1 )
@@ -315,7 +344,6 @@ private:
     }
 
     assert( vars.size() == pow( 3, n - r ) );
-    //for ( auto g : vars ) { g.x1.print( n - r ); std::cout<<" "; } std::cout<<"\n";
   }
 
   void construct_RCF()
@@ -346,10 +374,120 @@ private:
 
   void solve_RCF()
   {
-    //for ( auto& c : RCF_ ) { c.print( block_size ); }
+    for ( auto i = 0u; i < vars.size(); ++i )
+    {
+      std::cout<<i<<" ";
+      vars[i].x1.print(n-r);
+      std::cout<<"\n";
+    }
+    for ( auto& c : RCF_ ) { c.print_block(); }
 
+    write_maxixor();
     /* a complete process: try every 2^(2^r) assignment of `x2` to every `g_var` */
-    naive_solve_rec( 0u, 0u );
+    //naive_solve_rec( 0u, 0u );
+
+    n_r = n - r;
+    //solve_phase1( vars.size() - 1u, 0u );
+  }
+
+  /* try all possible assignments for g_vars (3^n_r - 1) to (3^n_r - 2^n_r) */
+  /* first phase of a subproblem with n - r = n_r */
+  bool solve_phase1( uint32_t vid, uint32_t cost )
+  {
+    if ( cost >= best ) /* use > if want all optimal solutions */
+    {
+      return true;
+    }
+
+    /* except for the first phase1, we need to check the other half of identical constraints */
+    /* if the paired constraints have different values, conclude UNSAT */
+    bool check_pairs = (n - r != n_r);
+
+    if ( check_pairs )
+    {
+      /* the indexes of the two associated constraint blocks */
+      auto bid1 = ( 1u << n_r ) - ( pow( 3, n_r ) - vid );
+      // auto& bid2 = bid1 + ( 1u << n_r );
+      auto x2 = RCF_[bid1].rhs_current( vars, vid + 1 );
+      if ( x2 != RCF_[bid1 + ( 1u << n_r )].rhs_current( vars, vid + 1 ) )
+      {
+        /* UNSAT */
+        //std::cout<<"UNSAT at vid "<<vid<<"\n";
+        return false;
+      }
+    }
+
+    bool is_last = ( vid == pow( 3, n_r ) - (1 << n_r) );
+
+    for ( auto x2 = 0u; x2 < ( 1u << block_size ); ++x2 )
+    {
+      vars[vid].x2 = x2;
+      //std::cout<<"assign "<<x2<<" to var "<<vid<<"\n";
+      if ( is_last )
+      {
+        solve_phase2( vid - 1, cost + costs[x2] );
+      }
+      else if ( !solve_phase1( vid - 1, cost + costs[x2] ) )
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /* try all possible assignments for g_vars (3^n_r - 2^n_r - 1) to 3^(n_r - 1) */
+  /* in the end, enter again phase1 for a smaller subproblem */
+  /* in phase2, we never need to check for paired constraints */
+  void solve_phase2( uint32_t vid, uint32_t cost )
+  {
+    if ( cost >= best ) /* use > if want all optimal solutions */
+    {
+      return;
+    }
+
+    /* termial case */
+    if ( vid == 0u )
+    {
+      assert( n_r == 1u );
+      auto x2 = RCF_[0].rhs_current( vars, 1 );
+      if ( x2 != RCF_[1].rhs_current( vars, 1 ) )
+      {
+        /* UNSAT */
+        return;
+      }
+
+      vars[vid].x2 = x2;
+      //std::cout<<"assign "<<x2<<" to var "<<vid<<"\n";
+
+      assert( cost + costs[x2] == get_cost() );
+      if ( cost + costs[x2] < best ) /* use <= if want all optimal solutions */
+      {
+        esops.clear();
+        best = cost + costs[x2];
+        std::cout<<"new solution found with cost "<<cost + costs[x2]<<"\n";
+        assert( valid() );
+        esops.emplace_back( make_esop() );
+      }
+      return;
+    }
+
+    bool is_last = ( vid == pow( 3, n_r - 1 ) );
+
+    for ( auto x2 = 0u; x2 < ( 1u << block_size ); ++x2 )
+    {
+      vars[vid].x2 = x2;
+      //std::cout<<"assign "<<x2<<" to var "<<vid<<"\n";
+      if ( is_last )
+      {
+        --n_r;
+        solve_phase1( vid - 1, cost + costs[x2] );
+        ++n_r;
+      }
+      else
+      {
+        solve_phase2( vid - 1, cost + costs[x2] );
+      }
+    }
   }
   
   /* vid: index of the currently deciding g_var. */
@@ -370,7 +508,7 @@ private:
         best = cost;
       }
       assert( cost == get_cost() );
-      //std::cout<<"new solution found with cost "<<cost<<"\n";
+      std::cout<<"new solution found with cost "<<cost<<"\n";
       esops.emplace_back( make_esop() );
       return;
     }
@@ -389,7 +527,7 @@ private:
       return;
     }
 
-    for ( auto x2 = 0u; x2 < ( 1u <<block_size ); ++x2 )
+    for ( auto x2 = 0u; x2 < ( 1u << block_size ); ++x2 )
     {
       vars[vid].x2 = x2;
       naive_solve_rec( vid + 1, cost + costs[x2] );
@@ -401,12 +539,6 @@ private:
   {
     assert( valid() );
     std::vector<kitty::cube> esop;
-
-    /*for ( auto& g : vars )
-    {
-      g.x1.print(n-r);
-      std::cout<<" "<<g.x2<<"\n";
-    }*/
 
     for ( auto& g : vars )
     {
@@ -473,6 +605,7 @@ private:
   uint32_t const n;
   uint32_t const r;
   uint32_t const block_size; // 2^r
+  uint32_t n_r; // (n - r) of current subproblem
 
   std::vector<uint32_t> costs;
   uint32_t best; /* cost of the best solution so far */
