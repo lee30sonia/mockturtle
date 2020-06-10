@@ -79,3 +79,8 @@ if (NOT TARGET abcresub)
   add_library(abcresub INTERFACE)
   target_include_directories(abcresub INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/abcresub)
 endif()
+
+if (NOT TARGET libabcesop)
+  set(STATIC_LIBABC true)
+  add_subdirectory(abcesop)
+endif()
