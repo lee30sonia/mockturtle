@@ -518,7 +518,7 @@ private:
   patgen_stats& st;
 
   validator_params& vps;
-  circuit_validator<Ntk, bill::solvers::z3, true, true> validator;
+  circuit_validator<Ntk, bill::solvers::z3, false, true, true> validator;
   
   TT tts;
   std::vector<signal> const_nodes;
@@ -557,7 +557,6 @@ partial_simulator pattern_generation( Ntk& ntk, patgen_params const& ps = {}, pa
   validator_params vps;
   vps.odc_levels = ps.odc_levels;
   vps.conflict_limit = ps.conflict_limit;
-  vps.randomize = true;
   vps.random_seed = ps.random_seed;
 
   if ( ps.patfile )

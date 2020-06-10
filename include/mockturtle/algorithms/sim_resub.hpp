@@ -281,7 +281,7 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using validator_t = circuit_validator<Ntk, bill::solvers::z3, true, true>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::z3, true, true, true>;
   using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
   using gtype = typename validator_t::gate_type;
@@ -988,7 +988,6 @@ void sim_resubstitution( Ntk& ntk, partial_simulator& sim, simresub_params const
   validator_params vps;
   vps.odc_levels = ps.odc_levels;
   vps.conflict_limit = ps.conflict_limit;
-  vps.randomize = true;
   vps.random_seed = ps.random_seed;
 
   simresub_stats st;
