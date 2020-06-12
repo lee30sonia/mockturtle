@@ -803,9 +803,9 @@ private:
 
         if ( isor )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = !ntk.is_complemented( s0 );
-          fanin fi2; fi2.idx = 1; fi2.inv = !ntk.is_complemented( s1 );
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
+          fanin fi1{0, !ntk.is_complemented( s0 )};
+          fanin fi2{1, !ntk.is_complemented( s1 )};
+          vgate gate{{fi1, fi2}, gtype::AND};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, true );
@@ -851,9 +851,9 @@ private:
 
         if ( isand )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = ntk.is_complemented( s0 );
-          fanin fi2; fi2.idx = 1; fi2.inv = ntk.is_complemented( s1 );
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
+          fanin fi1{0, ntk.is_complemented( s0 )};
+          fanin fi2{1, ntk.is_complemented( s1 )};
+          vgate gate{{fi1, fi2}, gtype::AND};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, false );
@@ -904,9 +904,9 @@ private:
 
         if ( isxor || isxnor )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = false;
-          fanin fi2; fi2.idx = 1; fi2.inv = false;
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::XOR;
+          fanin fi1{0, false};
+          fanin fi2{1, false};
+          vgate gate{{fi1, fi2}, gtype::XOR};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {s0, s1}, {gate}, isxnor );
