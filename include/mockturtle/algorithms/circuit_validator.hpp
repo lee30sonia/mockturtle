@@ -44,8 +44,8 @@ namespace mockturtle
 
 struct validator_params
 {
-  /*! \brief Maximum number of clauses of the SAT solver. */
-  uint32_t max_solver_size{10000};
+  /*! \brief Maximum number of clauses of the SAT solver. (incremental CNF construction) */
+  uint32_t max_clauses{1000};
 
   /*! \brief Whether to consider ODC, and how many levels. 0 = No consideration. -1 = Consider TFO until PO. */
   int odc_levels{0};
@@ -76,11 +76,11 @@ public:
   {
     struct fanin
     {
-      /*! \brief Index in the concatenated list of `divs` and `ckt`. */
-      uint32_t idx;
+      /*! \brief Index in the concatenated list of `divs` and `circuit`. */
+      uint32_t index;
 
       /*! \brief Input negation. */
-      bool inv{false};
+      bool inverted{false};
     };
 
     /*! \brief Fanins of the gate. */
@@ -145,7 +145,7 @@ public:
       construct( ntk.get_node( d ) );
     }
     auto const res = validate( ntk.get_node( f ), lit_not_cond( literals[d], ntk.is_complemented( f ) ^ ntk.is_complemented( d ) ) );
-    if ( solver.num_clauses() > ps.max_solver_size )
+    if ( solver.num_clauses() > ps.max_clauses )
     {
       restart();
     }
@@ -160,7 +160,7 @@ public:
       construct( ntk.get_node( d ) );
     }
     auto const res = validate( root, lit_not_cond( literals[d], ntk.is_complemented( d ) ) );
-    if ( solver.num_clauses() > ps.max_solver_size )
+    if ( solver.num_clauses() > ps.max_clauses )
     {
       restart();
     }
@@ -169,33 +169,33 @@ public:
 
   /*! \brief Validate functional equivalence of signal `f` with a circuit.
    * 
-   * The circuit `ckt` uses `divs` as inputs, which are existing nodes in the network.
+   * The circuit `circuit` uses `divs` as inputs, which are existing nodes in the network.
    *
-   * \param divs Existing nodes in the network, serving as PIs of `ckt`.
-   * \param ckt Circuit built with `divs` as inputs. Please see the documentation of `circuit_validator::gate` for its data structure.
+   * \param divs Existing nodes in the network, serving as PIs of `circuit`.
+   * \param circuit Circuit built with `divs` as inputs. Please see the documentation of `circuit_validator::gate` for its data structure.
    * \param output_negation Output negation of the topmost gate of the circuit.
    */
-  std::optional<bool> validate( signal const& f, std::vector<node> const& divs, std::vector<gate> const& ckt, bool output_negation = false )
+  std::optional<bool> validate( signal const& f, std::vector<node> const& divs, std::vector<gate> const& circuit, bool output_negation = false )
   {
-    return validate( ntk.get_node( f ), divs.begin(), divs.end(), ckt, output_negation ^ ntk.is_complemented( f ) );
+    return validate( ntk.get_node( f ), divs.begin(), divs.end(), circuit, output_negation ^ ntk.is_complemented( f ) );
   }
 
   /*! \brief Validate functional equivalence of node `root` with a circuit. */
-  std::optional<bool> validate( node const& root, std::vector<node> const& divs, std::vector<gate> const& ckt, bool output_negation = false )
+  std::optional<bool> validate( node const& root, std::vector<node> const& divs, std::vector<gate> const& circuit, bool output_negation = false )
   {
-    return validate( root, divs.begin(), divs.end(), ckt, output_negation );
+    return validate( root, divs.begin(), divs.end(), circuit, output_negation );
   }
 
   /*! \brief Validate functional equivalence of signal `f` with a circuit. */
   template<class iterator_type>
-  std::optional<bool> validate( signal const& f, iterator_type divs_begin, iterator_type divs_end, std::vector<gate> const& ckt, bool output_negation = false )
+  std::optional<bool> validate( signal const& f, iterator_type divs_begin, iterator_type divs_end, std::vector<gate> const& circuit, bool output_negation = false )
   {
-    return validate( ntk.get_node( f ), divs_begin, divs_end, ckt, output_negation ^ ntk.is_complemented( f ) );
+    return validate( ntk.get_node( f ), divs_begin, divs_end, circuit, output_negation ^ ntk.is_complemented( f ) );
   }
 
   /*! \brief Validate functional equivalence of node `root` with a circuit. */
   template<class iterator_type>
-  std::optional<bool> validate( node const& root, iterator_type divs_begin, iterator_type divs_end, std::vector<gate> const& ckt, bool output_negation = false )
+  std::optional<bool> validate( node const& root, iterator_type divs_begin, iterator_type divs_end, std::vector<gate> const& circuit, bool output_negation = false )
   {
     if ( !literals.has( root ) )
     {
@@ -218,7 +218,7 @@ public:
       solver.push();
     }
 
-    for ( auto g : ckt )
+    for ( auto g : circuit )
     {
       lits.emplace_back( add_tmp_gate( lits, g ) );
     }
@@ -230,7 +230,7 @@ public:
       solver.pop();
     }
 
-    if ( solver.num_clauses() > ps.max_solver_size )
+    if ( solver.num_clauses() > ps.max_clauses )
     {
       restart();
     }
@@ -278,39 +278,11 @@ public:
       res = solve( {lit_not_cond( literals[root], value )} );
     }
 
-    if ( solver.num_clauses() > ps.max_solver_size )
+    if ( solver.num_clauses() > ps.max_clauses )
     {
       restart();
     }
     return res;
-  }
-
-  /*! \brief Add CNF clauses for a newly created node.
-   *
-   * This function should be called when a new node is created after 
-   * construction of circuit_validator.
-   * It can be called manually every time or be added to `ntk.on_add` events.
-   */
-  void add_node( node const& n )
-  {
-    /*std::vector<bill::lit_type> lit_fi;
-    ntk.foreach_fanin( n, [&]( const auto& f ) {
-      lit_fi.emplace_back( lit_not_cond( literals[f], ntk.is_complemented( f ) ) );
-    } );
-
-    literals.resize();
-    assert( lit_fi.size() == 2u || lit_fi.size() == 3u );
-    if ( lit_fi.size() == 2u )
-    {
-      assert( ntk.is_and( n ) || ntk.is_xor( n ) );
-      literals[n] = add_clauses_for_2input_gate( lit_fi[0], lit_fi[1], std::nullopt, ntk.is_and( n ) ? AND : XOR );
-    }
-    else
-    {
-      assert( lit_fi.size() == 3u );
-      assert( ntk.is_maj( n ) || ntk.is_xor3( n ) );
-      literals[n] = add_clauses_for_3input_gate( lit_fi[0], lit_fi[1], lit_fi[2], std::nullopt, ntk.is_maj( n ) ? MAJ : XOR );
-    }*/
   }
 
   /*! \brief Update CNF clauses.
@@ -450,16 +422,16 @@ private:
 
     if ( g.fanins.size() == 2u )
     {
-      assert( g.fanins[0].idx < lits.size() );
-      assert( g.fanins[1].idx < lits.size() );
-      return add_clauses_for_2input_gate( lit_not_cond( lits[g.fanins[0].idx], g.fanins[0].inv ), lit_not_cond( lits[g.fanins[1].idx], g.fanins[1].inv ), std::nullopt, g.type );
+      assert( g.fanins[0].index < lits.size() );
+      assert( g.fanins[1].index < lits.size() );
+      return add_clauses_for_2input_gate( lit_not_cond( lits[g.fanins[0].index], g.fanins[0].inverted ), lit_not_cond( lits[g.fanins[1].index], g.fanins[1].inverted ), std::nullopt, g.type );
     }
     else
     {
-      assert( g.fanins[0].idx < lits.size() );
-      assert( g.fanins[1].idx < lits.size() );
-      assert( g.fanins[2].idx < lits.size() );
-      return add_clauses_for_3input_gate( lit_not_cond( lits[g.fanins[0].idx], g.fanins[0].inv ), lit_not_cond( lits[g.fanins[1].idx], g.fanins[1].inv ), lit_not_cond( lits[g.fanins[2].idx], g.fanins[2].inv ), std::nullopt, g.type );
+      assert( g.fanins[0].index < lits.size() );
+      assert( g.fanins[1].index < lits.size() );
+      assert( g.fanins[2].index < lits.size() );
+      return add_clauses_for_3input_gate( lit_not_cond( lits[g.fanins[0].index], g.fanins[0].inverted ), lit_not_cond( lits[g.fanins[1].index], g.fanins[1].inverted ), lit_not_cond( lits[g.fanins[2].index], g.fanins[2].inverted ), std::nullopt, g.type );
     }
   }
 
