@@ -988,14 +988,13 @@ private:
         }
 
         uint64_t const num_gates = ( index_list.size() - 1u ) / 2u;
-        std::vector<vgate> gates( num_gates );
+        std::vector<vgate> gates; gates.reserve( num_gates );
         size = 0u;
         for ( auto i = 0u; i < num_gates; ++i )
         {
-          fanin f0; f0.idx = uint32_t( ( index_list[2*i] >> 1u ) - 2u ); f0.inv = bool( index_list[2*i] % 2 );
-          fanin f1; f1.idx = uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ); f1.inv = bool( index_list[2*i + 1u] % 2 );
-          gates[i].fanins = { f0, f1 };
-          gates[i].type = f0.idx < f1.idx ? gtype::AND : gtype::XOR;
+          fanin f0{uint32_t( ( index_list[2*i] >> 1u ) - 2u ), bool( index_list[2*i] % 2 )};
+          fanin f1{uint32_t( ( index_list[2*i + 1u] >> 1u ) - 2u ), bool( index_list[2*i + 1u] % 2 )};
+          gates.emplace_back( vgate{{ f0, f1 }, f0.index < f1.index ? gtype::AND : gtype::XOR} );
           
           if constexpr ( std::is_same<NtkBase, xag_network>::value )
             ++size;
@@ -1030,8 +1029,8 @@ private:
 
             for ( auto g : gates )
             {
-              auto const f0 = g.fanins[0].inv ? !ckt[g.fanins[0].idx] : ckt[g.fanins[0].idx];
-              auto const f1 = g.fanins[1].inv ? !ckt[g.fanins[1].idx] : ckt[g.fanins[1].idx];
+              auto const f0 = g.fanins[0].inverted ? !ckt[g.fanins[0].index] : ckt[g.fanins[0].index];
+              auto const f1 = g.fanins[1].inverted ? !ckt[g.fanins[1].index] : ckt[g.fanins[1].index];
               if ( g.type == gtype::AND )
               {
                 ckt.emplace_back( ntk.create_and( f0, f1 ) );
