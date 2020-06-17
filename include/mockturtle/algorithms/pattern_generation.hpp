@@ -155,9 +155,6 @@ public:
   {
     stopwatch t( st.time_total );
 
-    /* start the managers */
-    //progress_bar pbar{ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress};
-
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
@@ -257,10 +254,14 @@ private:
 private:
   void stuck_at_check()
   {
+    progress_bar pbar{ntk.size(), "patgen-sa |{0}| node = {1:>4} #pat = {2:>4}", ps.progress};
+
     kitty::partial_truth_table zero = sim.compute_constant(false);
 
-    ntk.foreach_gate( [&]( auto const& n ) 
+    ntk.foreach_gate( [&]( auto const& n, auto i ) 
     {
+      pbar( i, i, st.num_total_patterns );
+
       //std::cout<<"processing node "<<unsigned(n)<<std::endl;
       if ( (tts[n] == zero) || (tts[n] == ~zero) )
       {
@@ -519,7 +520,7 @@ private:
   patgen_stats& st;
 
   validator_params& vps;
-  circuit_validator<Ntk, bill::solvers::z3, false, true, true> validator;
+  circuit_validator<Ntk, bill::solvers::bsat2, true, true, true> validator;
   
   TT tts;
   std::vector<signal> const_nodes;

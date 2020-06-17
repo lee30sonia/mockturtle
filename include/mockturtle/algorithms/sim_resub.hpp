@@ -296,7 +296,7 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using validator_t = circuit_validator<Ntk, bill::solvers::z3, true, true, true>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, true, true, true>;
   using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
   using gtype = typename validator_t::gate_type;
@@ -350,7 +350,7 @@ public:
     
     ntk._events->on_add.emplace_back( update_level_of_new_node );
     ntk._events->on_add.emplace_back( [&]( const auto& n ){
-      validator.add_node( n );
+      (void)n;
       call_with_stopwatch( st.time_sim, [&]() {
         simulate_nodes<Ntk>( ntk, tts, sim );
       });
@@ -865,9 +865,9 @@ private:
 
         if ( isor )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = !ntk.is_complemented( s0 );
-          fanin fi2; fi2.idx = 1; fi2.inv = !ntk.is_complemented( s1 );
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
+          fanin fi1{0, !ntk.is_complemented( s0 )};
+          fanin fi2{1, !ntk.is_complemented( s1 )};
+          vgate gate{{fi1, fi2}, gtype::AND};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, true );
@@ -913,9 +913,9 @@ private:
 
         if ( isand )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = ntk.is_complemented( s0 );
-          fanin fi2; fi2.idx = 1; fi2.inv = ntk.is_complemented( s1 );
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::AND;
+          fanin fi1{0, ntk.is_complemented( s0 )};
+          fanin fi2{1, ntk.is_complemented( s1 )};
+          vgate gate{{fi1, fi2}, gtype::AND};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, false );
@@ -1085,9 +1085,9 @@ private:
 
         if ( isxor || isxnor )
         {
-          fanin fi1; fi1.idx = 0; fi1.inv = false;
-          fanin fi2; fi2.idx = 1; fi2.inv = false;
-          vgate gate; gate.fanins = {fi1, fi2}; gate.type = gtype::XOR;
+          fanin fi1{0, false};
+          fanin fi2{1, false};
+          vgate gate{{fi1, fi2}, gtype::XOR};
 
           const auto valid = call_with_stopwatch( st.time_sat, [&]() {
             return validator.validate( root, {s0, s1}, {gate}, isxnor );
