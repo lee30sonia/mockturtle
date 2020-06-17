@@ -296,7 +296,7 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, true, true, true>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, true>;
   using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
   using gtype = typename validator_t::gate_type;
@@ -368,9 +368,6 @@ public:
     /* start the managers */
     progress_bar pbar{ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress};
 
-    //std::vector<node> PIs( ntk.num_pis() );
-    //ntk.foreach_pi( [&]( auto const& n, auto i ){ PIs.at(i) = n; });
-
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
@@ -410,7 +407,6 @@ public:
           return true; /* next */
 
         /* use all the PIs as the cut */
-        //auto const leaves = PIs;
         cut_manager<Ntk> mgr( ps.max_pis );
         auto const leaves = reconv_driven_cut( mgr, ntk, n );
         
@@ -828,6 +824,8 @@ private:
         {
           ++st.num_cex_div0;
           found_cex();
+          tt = get_tt( root );
+          ntt = get_tt( root, true );
         }
       }
     }
@@ -838,7 +836,7 @@ private:
   std::optional<signal> resub_div1( node const& root, uint32_t required )
   {
     (void)required;
-    auto const& tt = get_tt( root );;
+    auto tt = get_tt( root );
     auto const& w = kitty::count_ones_fast( tt );
     auto const& nw = tt.num_bits() - w;
 
@@ -846,7 +844,7 @@ private:
     for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
     {
       auto const& s0 = udivs.positive_divisors.at( i ).first;
-      auto const& tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
+      auto tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
       auto const& w_s0 = udivs.positive_divisors.at( i ).second;
       if ( w_s0 < uint32_t( w / 2 ) )
         break;
@@ -885,6 +883,8 @@ private:
           {
             ++st.num_cex_div1;
             found_cex();
+            tt = get_tt( root );
+            tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
           }
         }
       }
@@ -894,7 +894,7 @@ private:
     for ( auto i = 0u; i < udivs.negative_divisors.size(); ++i )
     {
       auto const& s0 = udivs.negative_divisors.at( i ).first;
-      auto const& tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
+      auto tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
       auto const& w_s0 = udivs.negative_divisors.at( i ).second;
       if ( w_s0 < uint32_t( nw / 2 ) )
         break;
@@ -933,6 +933,8 @@ private:
           {
             ++st.num_cex_div1;
             found_cex();
+            tt = get_tt( root );
+            tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
           }
         }
       }
@@ -1068,7 +1070,7 @@ private:
     for ( auto i = 0u; i < num_divs - 1; ++i )
     {
       auto const& s0 = divs.at( i );
-      auto const& tt_s0 = get_tt( s0 );
+      auto tt_s0 = get_tt( s0 );
 
       for ( auto j = i + 1; j < num_divs; ++j )
       {
@@ -1104,6 +1106,9 @@ private:
           {
             ++st.num_cex_xor;
             found_cex();
+            tt = get_tt( root );
+            ntt = get_tt( root, true );
+            tt_s0 = get_tt( s0 );
           }
         }
       }

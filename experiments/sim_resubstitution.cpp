@@ -49,12 +49,11 @@ int main()
   //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "iwls2005/mem_ctrl" ) continue;
+    //if ( benchmark != "iwls2005/ac97_ctrl" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
-    //lorina::read_verilog( "optimized_abc/" + benchmark + ".v", verilog_reader( aig ) );
 
     simresub_params ps;
     simresub_stats st;
@@ -68,7 +67,7 @@ int main()
     ps.check_const = true;
 
     bool useExternal = true;
-    auto pat_path = "256sa1obs/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
+    auto pat_path = "1024sa1/"; // "patABC/" "patgen/" "patCEX/" "stuck_at_10/" "stuck_at_10_obs/" 
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
 
     patgen_stats st_pat;
@@ -93,14 +92,8 @@ int main()
     const uint32_t size0 = aig.num_gates();
     sim_resubstitution( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
-    //const uint32_t size1 = aig.num_gates();
-    //sim_resubstitution( aig, sim, ps, &st );
-    //aig = cleanup_dangling( aig );
-    //const uint32_t size2 = aig.num_gates();
-    //sim_resubstitution( aig, sim, ps, &st );
-    //aig = cleanup_dangling( aig );
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    const auto cec = abc_cec( aig, benchmark );
     exp( benchmark, aig.num_pis(), size0, size0 - aig.num_gates(), st_pat.num_total_patterns, st.num_cex, st.num_cex_div0 + st.num_cex_div1, st.num_cex_divk, st.num_div0_accepts + st.num_div1_accepts, st.num_divk_accepts, /*to_seconds( st_pat.time_total ),*/ to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_compute_function ), cec );
   }
 
