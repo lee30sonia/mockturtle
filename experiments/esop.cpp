@@ -36,8 +36,8 @@ int main()
 {
   using namespace mockturtle;
 
-  kitty::dynamic_truth_table tt( 5u );
-  kitty::create_from_hex_string( tt, "9637ca81" );
+  kitty::dynamic_truth_table tt( 4u );
+  kitty::create_from_hex_string( tt, "1039" );
   //kitty::dynamic_truth_table tt( 6u );
   //kitty::create_from_hex_string( tt, "688c802028222222" );
 
@@ -48,7 +48,7 @@ int main()
 
   call_with_stopwatch( runtime, [&]() {
     esop_synthesis( tt, ps );
-    system("./maxixor dump.txt");
+    //system("./maxixor dump.txt");
   });
   std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
 

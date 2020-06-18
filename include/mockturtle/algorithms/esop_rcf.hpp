@@ -40,6 +40,9 @@
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/bit_operations.hpp>
 
+#include <bill/dd/zdd.hpp>
+#include <fmt/format.h>
+
 #include "../traits.hpp"
 #include "../utils/stopwatch.hpp"
 
@@ -63,6 +66,10 @@ struct g_var
     : n( n ), r( r ), x1( x1 ), x2( 0u )
   { }
 
+  void reset_x2() { x2 = 0u; }
+
+  void set_x2( uint32_t const& offset ) { x2 |= 1 << offset; }
+
   uint32_t cost( std::vector<uint32_t> const& costs ) const
   {
     return costs[x2];
@@ -70,6 +77,7 @@ struct g_var
 
   std::vector<kitty::cube> esop_cubes()
   {
+    /* variable order is incorrect */
     if ( x2 == 0u )
     {
       return std::vector<kitty::cube>();
@@ -181,7 +189,31 @@ struct xor_constraint
     : vids( vids ), offset( offset ), even( even )
   {}
 
-  void print( uint32_t block_size ) const
+  uint32_t zdd_node( bill::zdd_base& zdd, uint32_t const& block_size )
+  {
+    //std::cout<<"building ZDD for: "; print( block_size );
+
+    uint32_t every = zdd.bottom();
+    for ( auto& vid : vids )
+    {
+      every = zdd.union_( every, zdd.elementary( vid * block_size + offset ) );
+    }
+    uint32_t rest = zdd.nonsupersets( zdd.tautology(), every );
+
+    uint32_t k = even ? 0 : 1;
+    uint32_t zid = zdd.bottom();
+    while ( k <= vids.size() )
+    {
+      zid = zdd.union_( zid, zdd.choose( every, k ) );
+      k += 2;
+    }
+    zid = zdd.join( zid, rest );
+
+    //zdd.print_sets( zid );
+    return zid;
+  }
+
+  void print( uint32_t const& block_size ) const
   {
     for ( auto& vid : vids )
     {
@@ -196,7 +228,7 @@ struct xor_constraint
     for ( auto& vid : vids )
     {
       auto const& var = vars[vid];
-      res ^= ( var.x2 == offset );
+      res ^= bool( var.x2 & ( 1 << offset ) );
     }
     return res;
   }
@@ -284,7 +316,8 @@ class esop_synthesis_impl
 {
 public:
   esop_synthesis_impl( kitty::dynamic_truth_table const& func, esop_synthesis_params const& ps )
-    : func( func ), n( func.num_vars() ), r( ps.r ), block_size( 1u << r ), best( ps.best ), ps( ps )
+    : func( func ), n( func.num_vars() ), r( ps.r ), block_size( 1u << r ),
+      zdd( pow( 2, r ) * pow( 3, n - r ) ), best( ps.best ), ps( ps )
   {
     assert( r <= 2u && r <= n && "r parameter too large" );
     switch( r )
@@ -303,7 +336,6 @@ public:
     }
   }
 
-public:
   std::vector<kitty::cube> run()
   {
     create_covering_variables();
@@ -312,15 +344,15 @@ public:
     solve_RCF();
 
     std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
-    for ( auto& esop : esops )
-    {
-      for ( auto& c : esop )
-      {
-        c.print( n );
-        std::cout << " ";
-      }
-      std::cout << "\n";
-    }
+    //for ( auto& esop : esops )
+    //{
+    //  for ( auto& c : esop )
+    //  {
+    //    c.print( n );
+    //    std::cout << " ";
+    //  }
+    //  std::cout << "\n";
+    //}
 
     return std::vector<kitty::cube>();//esops[0];
   }
@@ -374,22 +406,59 @@ private:
 
   void solve_RCF()
   {
-    for ( auto i = 0u; i < vars.size(); ++i )
+    /*for ( auto i = 0u; i < vars.size(); ++i )
     {
       std::cout<<i<<" ";
       vars[i].x1.print(n-r);
       std::cout<<"\n";
-    }
-    for ( auto& c : RCF_ ) { c.print_block(); }
+    }*/
+    //for ( auto& c : RCF_ ) { c.print_block(); }
+    //for ( auto& c : RCF ) { c.print( block_size ); }
 
-    write_maxixor();
+    //write_maxixor();
+
     /* a complete process: try every 2^(2^r) assignment of `x2` to every `g_var` */
     //naive_solve_rec( 0u, 0u );
+    //n_r = n - r; solve_phase1( vars.size() - 1u, 0u );
 
-    n_r = n - r;
-    //solve_phase1( vars.size() - 1u, 0u );
+    build_ZDD();
   }
 
+private: /* ZDD */
+  void build_ZDD()
+  {
+    uint32_t zid = zdd.tautology();
+    for ( auto& c : RCF ) 
+    { 
+      zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) ); 
+    }
+    //zdd.print_sets( zid );
+    zdd.foreach_set( zid, [&]( auto const& set ){
+      //std::cout << fmt::format("{{ {} }}", fmt::join(set, ", "));
+      for ( auto& v : vars )
+      {
+        v.reset_x2();
+      }
+      for ( auto& z : set )
+      {
+        vars.at( int( z / block_size ) ).set_x2( z % block_size );
+      }
+      auto cost = get_cost();
+      if ( cost < best )
+      {
+        best = cost;
+        esops.clear();
+      }
+      if ( cost <= best )
+      {
+        esops.emplace_back( make_esop() );
+      }
+      //std::cout << " -- " << get_cost() << ( valid() ? " (valid)" : " (invalid!!)" ) << "\n";
+      return true;
+    });
+  }
+
+private: /* direct enumeration algorithms & maxixor write-out */
   /* try all possible assignments for g_vars (3^n_r - 1) to (3^n_r - 2^n_r) */
   /* first phase of a subproblem with n - r = n_r */
   bool solve_phase1( uint32_t vid, uint32_t cost )
@@ -534,21 +603,6 @@ private:
     }
   }
 
-  /* translate into ESOP expression based on current g_var assignments */
-  std::vector<kitty::cube> make_esop()
-  {
-    assert( valid() );
-    std::vector<kitty::cube> esop;
-
-    for ( auto& g : vars )
-    {
-      auto cubes = g.esop_cubes();
-      esop.insert( esop.end(), cubes.begin(), cubes.end() );
-    }
-
-    return esop;
-  }
-
   void write_maxixor( const std::string file_name = "dump.txt" )
   {
     std::ofstream os( file_name.c_str(), std::ofstream::out );
@@ -566,7 +620,7 @@ private:
     }
   }
 
-private:
+private: /* helper functions */
   /* check if minterm `m` is contained in cube `c` */
   bool contain( kitty::cube const& c, uint32_t const& m )
   {
@@ -583,9 +637,24 @@ private:
     return cost;
   }
 
+  /* translate into ESOP expression based on current g_var assignments */
+  std::vector<kitty::cube> make_esop()
+  {
+    assert( valid() );
+    std::vector<kitty::cube> esop;
+
+    for ( auto& g : vars )
+    {
+      auto cubes = g.esop_cubes();
+      esop.insert( esop.end(), cubes.begin(), cubes.end() );
+    }
+
+    return esop;
+  }
+
   bool valid()
   {
-    for ( auto& c : RCF_ )
+    for ( auto& c : RCF )
     {
       if ( !c.valid( vars ) )
       {
@@ -604,8 +673,10 @@ private:
 
   uint32_t const n;
   uint32_t const r;
-  uint32_t const block_size; // 2^r
+  uint32_t const block_size; // == 2^r
   uint32_t n_r; // (n - r) of current subproblem
+
+  bill::zdd_base zdd;
 
   std::vector<uint32_t> costs;
   uint32_t best; /* cost of the best solution so far */
