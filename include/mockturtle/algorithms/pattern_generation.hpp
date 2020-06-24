@@ -261,6 +261,13 @@ private:
     {
       pbar( i, i, st.num_total_patterns );
 
+      if ( tts[n].num_bits() != sim.num_bits() )
+      {
+        call_with_stopwatch( st.time_sim, [&]() {
+          simulate_node<Ntk>( ntk, n, tts, sim );
+        });
+      }
+
       //std::cout<<"processing node "<<unsigned(n)<<std::endl;
       if ( (tts[n] == zero) || (tts[n] == ~zero) )
       {
@@ -316,9 +323,15 @@ private:
 #endif
           /* re-simulate */
           call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
+            //simulate_nodes<Ntk>( ntk, tts, sim );
             zero = sim.compute_constant(false);
           });
+          if ( sim.num_bits() % 64 == 0 )
+          {
+            call_with_stopwatch( st.time_sim, [&]() {
+              simulate_nodes<Ntk>( ntk, tts, sim, false );
+            });
+          }
         }
         else
         {
