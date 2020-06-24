@@ -65,6 +65,12 @@ struct g_var
   g_var( uint32_t const& n, uint32_t const& r, kitty::cube const& x1 )
     : n( n ), r( r ), x1( x1 ), x2( 0u )
   { }
+  
+  g_var& operator=( g_var other )
+  {
+    (void)other;
+    return *this;
+  }
 
   void reset_x2() { x2 = 0u; }
 
@@ -374,7 +380,7 @@ private:
         vars.emplace_back( n, r, kitty::cube( bits1, mask1 ) );
       }
     }
-
+    std::reverse( vars.begin(), vars.end() );
     assert( vars.size() == pow( 3, n - r ) );
   }
 
@@ -427,7 +433,7 @@ private:
 private: /* ZDD */
   void build_ZDD()
   {
-    uint32_t zid = zdd.tautology();
+    uint32_t zid = upper_bound();
     for ( auto& c : RCF ) 
     { 
       zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) ); 
@@ -456,6 +462,70 @@ private: /* ZDD */
       //std::cout << " -- " << get_cost() << ( valid() ? " (valid)" : " (invalid!!)" ) << "\n";
       return true;
     });
+  }
+
+  uint32_t upper_bound()
+  {
+    if ( r > 1 ) /* build tautology nodes for blocks of ZDD variables in each g_var */
+    {
+      for ( auto v = 0; v < vars.size() - 1; ++v )
+      {
+        uint32_t zid = zdd.elementary( ( v + 1 ) * block_size - 1 );
+        for ( int i = block_size - 2; i >= 0; --i )
+        {
+          zdd.ref( zid, 2 );
+          zid = zdd.unique( i, zid, zid );
+        }
+        tautologies.push_back( zid );
+      }
+      tautologies.push_back( zdd.tautology( v * block_size ) );
+    }
+
+    uint32_t m = r == 2 ? 2 : 1; /* max. cost of a g_var */
+    return upper_bound_rec( vars.size() - 1, m, ps.best );
+    //return zdd.tautology();
+  }
+
+  uint32_t upper_bound_rec( uint32_t v, uint32_t const& m, uint32_t k )
+  {
+    if ( v == 0 )
+    {
+      return upper_bound_single( 0, k );
+    }
+    uint32_t zid = zdd.bottom();
+    for ( auto i = 0u; i <= m; ++i )
+    {
+      if ( k < i ) break;
+      zid = zdd.union_( zid, zdd.join( upper_bound_single( v, i ), upper_bound_rec( v - 1, m, k - i ) ) );
+    }
+    return zid;
+  }
+
+  uint32_t upper_bound_single( uint32_t v, uint32_t k )
+  {
+    switch( r )
+    {
+      uint32_t zid;
+      uint32_t b = v * block_size;
+      case 0u: // ~g0 = {{}}, 1 = {{}, {g0}}
+        return ( k == 0u ) ? zdd.top() : zdd.union_( zdd.top(), zdd.elementary( v ) );
+      case 1u: // ~g0 & ~g1 = {{}}, 1 = {{}, {g0}, {g1}, {g0, g1}}
+        return ( k == 0u ) ? zdd.top() : tautologies.at( v );
+      case 2u:
+        if ( k == 0u ) return zdd.top();
+        else if ( k >= 2u ) return tautologies.at( v );
+        else // k == 1u
+        {
+          zid = zdd.join( zdd.elementary( b + 1 ), zdd.elementary( b + 2 ) ); // {g1, g2}
+          zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 1 ) ), zdd.elementary( b + 2 ) ) ); // {g0, g1, g2}
+          zid = zdd.union_( zid, zdd.join( zdd.elementary( b ), zdd.elementary( b + 3 ) ) ); // {g0, g3}
+          zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 1 ) ), zdd.elementary( b + 3 ) ) ); // {g0, g1, g3}
+          zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 2 ) ), zdd.elementary( b + 3 ) ) ); // {g0, g2, g3}
+          zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b + 1 ), zdd.elementary( b + 2 ) ), zdd.elementary( b + 3 ) ) ); // {g1, g2, g3}
+          return zdd.difference( tautologies.at( v ), zid );
+        }
+      default: assert( false ); return 0u;
+    }
   }
 
 private: /* direct enumeration algorithms & maxixor write-out */
@@ -677,6 +747,7 @@ private:
   uint32_t n_r; // (n - r) of current subproblem
 
   bill::zdd_base zdd;
+  std::vector<uint32_t> tautologies; /* tautology ZDD nodes for each g_var */
 
   std::vector<uint32_t> costs;
   uint32_t best; /* cost of the best solution so far */
