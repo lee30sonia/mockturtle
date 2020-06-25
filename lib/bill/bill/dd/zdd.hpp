@@ -109,7 +109,7 @@ public:
 #pragma endregion
 
 #pragma region ZDD base operations
-private:
+
 
 	/* \!brief Returns an unique node for the tuple (var, lo, hi)
 	 *
@@ -168,7 +168,16 @@ private:
 		unique_tables_.at(var)[{lo, hi}] = new_node_index;
 		return new_node_index;
 	}
-
+	
+	/* \!brief Return the tautology function */
+	node_index tautology(uint32_t var)
+	{
+		if (var == num_variables()) {
+			return top();
+		}
+		return (2 * num_variables()) + 1u - var;
+	}
+private:
 	/* \! brief Recursively revives a dead, but unrecycled node
 	 *
 	 * When we discover that a node exists, but it is dead, i.e. all links to it have gone
@@ -221,14 +230,7 @@ private:
 		--nodes_.at(node.hi).refs;
 	}
 
-	/* \!brief Return the tautology function */
-	node_index tautology(uint32_t var)
-	{
-		if (var == num_variables()) {
-			return top();
-		}
-		return (2 * num_variables()) + 1u - var;
-	}
+	
 
 	void cache_cleanup()
 	{

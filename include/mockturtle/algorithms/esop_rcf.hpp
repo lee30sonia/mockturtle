@@ -433,11 +433,16 @@ private:
 private: /* ZDD */
   void build_ZDD()
   {
-    uint32_t zid = upper_bound();
+    stopwatch<>::duration time_U(0);
+    uint32_t zid = call_with_stopwatch( time_U, [&]() {
+      return upper_bound();
+    });
+    std::cout<<"upper bound function built in " << to_seconds(time_U) << " sec.\n";
     for ( auto& c : RCF ) 
     { 
       zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) ); 
     }
+    std::cout<<"constraints built\n";
     //zdd.print_sets( zid );
     zdd.foreach_set( zid, [&]( auto const& set ){
       //std::cout << fmt::format("{{ {} }}", fmt::join(set, ", "));
@@ -466,24 +471,29 @@ private: /* ZDD */
 
   uint32_t upper_bound()
   {
+    if ( ps.best == INT_MAX )
+    {
+      return zdd.tautology();
+    }
+
     if ( r > 1 ) /* build tautology nodes for blocks of ZDD variables in each g_var */
     {
-      for ( auto v = 0; v < vars.size() - 1; ++v )
+      for ( auto v = 0u; v < vars.size() - 1; ++v )
       {
-        uint32_t zid = zdd.elementary( ( v + 1 ) * block_size - 1 );
-        for ( int i = block_size - 2; i >= 0; --i )
+        uint32_t zid = zdd.top();
+        for ( int i = block_size - 1; i >= 0; --i )
         {
           zdd.ref( zid, 2 );
-          zid = zdd.unique( i, zid, zid );
+          zid = zdd.unique( v * block_size + i, zid, zid );
         }
         tautologies.push_back( zid );
+        //zdd.print_sets( zid ); std::cout<<"-----\n";
       }
-      tautologies.push_back( zdd.tautology( v * block_size ) );
+      tautologies.push_back( zdd.tautology( ( vars.size() - 1 ) * block_size ) );
     }
 
     uint32_t m = r == 2 ? 2 : 1; /* max. cost of a g_var */
     return upper_bound_rec( vars.size() - 1, m, ps.best );
-    //return zdd.tautology();
   }
 
   uint32_t upper_bound_rec( uint32_t v, uint32_t const& m, uint32_t k )
@@ -503,10 +513,10 @@ private: /* ZDD */
 
   uint32_t upper_bound_single( uint32_t v, uint32_t k )
   {
+    uint32_t zid;
+    uint32_t b = v * block_size;
     switch( r )
     {
-      uint32_t zid;
-      uint32_t b = v * block_size;
       case 0u: // ~g0 = {{}}, 1 = {{}, {g0}}
         return ( k == 0u ) ? zdd.top() : zdd.union_( zdd.top(), zdd.elementary( v ) );
       case 1u: // ~g0 & ~g1 = {{}}, 1 = {{}, {g0}, {g1}, {g0, g1}}
