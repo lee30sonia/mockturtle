@@ -65,10 +65,6 @@ struct simresub_params
   /*! \brief Whether to save generated patterns into file. */
   std::optional<std::string> write_pats{};
 
-  /*! \brief Whether to scan and substitute constant nodes first.
-             Only safe if the provided patterns are stuck-at checked. */
-  bool check_const{false};
-
   /*! \brief Whether to utilize ODC, and how many levels. 0 = no. -1 = Consider TFO until PO. */
   int odc_levels{0};
 
@@ -356,19 +352,6 @@ public:
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
-
-    if ( ps.check_const )
-    {
-      auto const zero = sim.compute_constant( false );
-      auto const one = sim.compute_constant( true );
-
-      ntk.foreach_gate( [&]( auto const& n ){
-        if ( tts[n] == zero )
-          ntk.substitute_node( n, ntk.get_constant( false ) );
-        else if ( tts[n] == one )
-          ntk.substitute_node( n, ntk.get_constant( true ) );
-      });
-    }
 
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();

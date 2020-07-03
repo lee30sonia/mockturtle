@@ -49,8 +49,6 @@ int main()
   for ( auto const& benchmark : epfl_benchmarks() )
   //for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "div" ) continue;
-
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -64,7 +62,6 @@ int main()
     ps.max_inserts = 1u;
     ps.progress = true;
     //ps.odc_levels = 5;
-    ps.check_const = true;
 
     bool useExternal = false;
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
