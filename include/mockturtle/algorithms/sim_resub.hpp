@@ -79,7 +79,7 @@ struct simresub_params
   bool check_const{false};
 
   /*! \brief Whether to utilize ODC, and how many levels. 0 = no. -1 = Consider TFO until PO. */
-  int odc_levels{0};
+  //int odc_levels{0};
 
   /*! \brief Show progress. */
   bool progress{false};
@@ -114,39 +114,20 @@ struct simresub_stats
   /* time for divisor collection */
   stopwatch<>::duration time_divs{0};
 
-  /* time for checking implications (containment) */
-  stopwatch<>::duration time_collect_unate_divisors{0};
-
   /* time for executing the user-specified callback when candidates found */
   stopwatch<>::duration time_callback{0};
-
-  /* time & number of r == d (equal) node substitutions */
-  stopwatch<>::duration time_resub0{0};
-  uint32_t num_div0_accepts{0};
-
-  /* time & number of r == d1 &| d2 node substitutions */
-  stopwatch<>::duration time_resub1{0};
-  stopwatch<>::duration time_div1_compare{0};
-  uint32_t num_div1_accepts{0};
 
   /* time & number of k-resub */
   stopwatch<>::duration time_resubk{0};
   stopwatch<>::duration time_compute_function{0};
   uint32_t num_divk_accepts{0};
 
-  /* time & number of (~)r == d1 ^ d2 node substitutions */
-  stopwatch<>::duration time_xor{0};
-  uint32_t num_xor_accepts{0};
-
   /*! \brief Initial network size (before resubstitution) */
   uint64_t initial_size{0};
 
   uint32_t num_cex{0};
 
-  uint32_t num_cex_div0{0};
-  uint32_t num_cex_div1{0};
   uint32_t num_cex_divk{0};
-  uint32_t num_cex_xor{0};
 
   /*! \brief Total number of gain  */
   uint64_t estimated_gain{0};
@@ -296,34 +277,10 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
   using resub_callback_t = std::function<bool( NtkBase&, node const&, signal const& )>;
-  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, true>;
+  using validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, false>;
   using vgate = typename validator_t::gate;
   using fanin = typename vgate::fanin;
   using gtype = typename validator_t::gate_type;
-
-  struct unate_divisors
-  {
-    using signal = typename Ntk::signal;
-
-    std::vector<std::pair<signal, uint32_t>> positive_divisors;
-    std::vector<std::pair<signal, uint32_t>> negative_divisors;
-
-    void clear()
-    {
-      positive_divisors.clear();
-      negative_divisors.clear();
-    }
-
-    void sort()
-    {
-      std::sort(positive_divisors.begin(), positive_divisors.end(), [](std::pair<signal, uint32_t> a, std::pair<signal, uint32_t> b) {
-          return a.second > b.second;   
-      });
-      std::sort(negative_divisors.begin(), negative_divisors.end(), [](std::pair<signal, uint32_t> a, std::pair<signal, uint32_t> b) {
-          return a.second > b.second;   
-      });
-    }
-  };
 
   explicit simresub_impl( NtkBase& ntkbase, Ntk& ntk, simresub_params const& ps, simresub_stats& st, partial_simulator& sim, validator_params const& vps, resub_callback_t const& callback = substitute_fn<NtkBase> )
     : ntkbase( ntkbase ), ntk( ntk ), ps( ps ), st( st ), callback( callback ),
@@ -372,10 +329,7 @@ public:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    if ( ps.max_inserts > 1u )
-    {
-      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
-    }
+    abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
 
     if ( ps.check_const )
     {
@@ -418,16 +372,14 @@ public:
 
         /* update network */
         call_with_stopwatch( st.time_callback, [&]() {
-            if ( ps.odc_levels != 0 ) validator.update();
+            //if ( ps.odc_levels != 0 ) validator.update();
             return callback( ntkbase, n, *g );
           });
 
         return true; /* next */
       });
-    if ( ps.max_inserts > 1u )
-    {
-      abcresub::Abc_ResubPrepareManager( 0 );
-    }
+
+    abcresub::Abc_ResubPrepareManager( 0 );
   }
 
 private:
@@ -583,48 +535,6 @@ private:
     return true;
   }
 
-  void collect_unate_divisors( node const& root, uint32_t required )
-  {
-    udivs.clear();
-
-    auto const& tt = get_tt( root );;
-    for ( auto i = 0u; i < num_divs; ++i )
-    {
-      auto const d = divs.at( i );
-
-      if ( ntk.level( d ) > required - 1 )
-        continue;
-
-      auto const& tt_d = get_tt( d );;
-
-      /* check positive containment */
-      if ( kitty::implies( tt_d, tt ) )
-      {
-        udivs.positive_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_ones( tt_d & tt ) ) );
-        continue;
-      }
-      if ( kitty::implies( ~tt_d, tt ) )
-      {
-        udivs.positive_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_ones( ~tt_d & tt ) ) );
-        continue;
-      }
-
-      /* check negative containment */
-      if ( kitty::implies( tt, tt_d ) )
-      {
-        udivs.negative_divisors.emplace_back( std::make_pair( ntk.make_signal( d ), kitty::count_zeros( tt_d & tt ) ) );
-        continue;
-      }
-      if ( kitty::implies( tt, ~tt_d ) )
-      {
-        udivs.negative_divisors.emplace_back( std::make_pair( !ntk.make_signal( d ), kitty::count_zeros( ~tt_d & tt ) ) );
-        continue;
-      }
-    }
-
-    udivs.sort();
-  }
-
   void found_cex()
   {
     ++st.num_cex;
@@ -636,12 +546,12 @@ private:
       call_with_stopwatch( st.time_sim, [&]() {
         simulate_nodes<Ntk>( ntk, tts, sim, false );
       });
-    }
 
-    abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+    }
   }
 
-  kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
+  void check_tts( node const& n )
   {
     if ( tts[n].num_bits() != sim.num_bits() )
     {
@@ -649,40 +559,6 @@ private:
         simulate_node<Ntk>( ntk, n, tts, sim );
       });
     }
-
-    if ( ps.odc_levels == 0 )
-      return inverse? ~tts[n]: tts[n];
-
-    return ( inverse? ~tts[n]: tts[n] ) | observability_dont_cares( ntk, n, sim, tts, ps.odc_levels );
-  }
-
-  bool is_and( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
-  {
-    for ( auto i = 0u; i < tt.num_blocks(); ++i )
-    {
-      if ( ( tt1._bits[i] & tt2._bits[i] ) != tt._bits[i] )
-        return false;
-    }
-    return true;
-  }
-  bool is_or( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
-  {
-    for ( auto i = 0u; i < tt.num_blocks(); ++i )
-    {
-      if ( ( tt1._bits[i] | tt2._bits[i] ) != tt._bits[i] )
-        return false;
-    }
-    return true;
-  }
-
-  bool is_xor( kitty::partial_truth_table const& tt1, kitty::partial_truth_table const& tt2, kitty::partial_truth_table const& tt )
-  {
-    for ( auto i = 0u; i < tt.num_blocks(); ++i )
-    {
-      if ( ( tt1._bits[i] ^ tt2._bits[i] ) != tt._bits[i] )
-        return false;
-    }
-    return true;
   }
 
 private:
@@ -710,61 +586,10 @@ private:
     
     /* update statistics */
     st.num_total_divisors += num_divs;
-#if 1
-    /* consider equal nodes */
-    auto g = call_with_stopwatch( st.time_resub0, [&]() {
-        return resub_div0( root, required );
-      } );
-    if ( g )
-    {
-      ++st.num_div0_accepts;
-      last_gain = num_mffc;
-      return g; /* accepted resub */
-    }
 
-    if ( ps.max_inserts < 1 || num_mffc <= 1 )
-    {
-      return std::nullopt;
-    }
-
-    /* collect level one divisors */
-    call_with_stopwatch( st.time_collect_unate_divisors, [&]() {
-        collect_unate_divisors( root, required );
-      });
-
-    /* consider single-gate resub */
-    g = call_with_stopwatch( st.time_resub1, [&]() {
-        return resub_div1( root, required );
-      } );
-    if ( g )
-    {
-      ++st.num_div1_accepts;
-      last_gain = num_mffc - 1;
-      return g; /* accepted resub */
-    }
-
-    if constexpr ( std::is_same<NtkBase, xag_network>::value )
-    {
-      /* consider X(N)OR resub */
-      g = call_with_stopwatch( st.time_xor, [&]() {
-          return resub_xor( root, required );
-        } );
-      if ( g )
-      {
-        ++st.num_xor_accepts;
-        last_gain = num_mffc - 1;
-        return g; /* accepted resub */
-      }
-    }
-
-    if ( ps.max_inserts < 2 || num_mffc <= 2 )
-    {
-      return std::nullopt;
-    }
-#endif
     /* try k-resub */
     uint32_t size = 0;
-    g = call_with_stopwatch( st.time_resubk, [&]() {
+    auto g = call_with_stopwatch( st.time_resubk, [&]() {
         return resub_divk( root, std::min( num_mffc - 1, int( ps.max_inserts ) ), size );
       } );
     if ( g )
@@ -774,175 +599,6 @@ private:
       return g; /* accepted resub */
     }
 
-#if 0
-    if ( ps.max_inserts < 3 || num_mffc <= 3 )
-    {
-      return std::nullopt;
-    }
-
-    /* consider X(N)OR resub */
-    g = call_with_stopwatch( st.time_xor, [&]() {
-        return resub_xor( root, required );
-      } );
-    if ( g )
-    {
-      ++st.num_xor_accepts;
-      last_gain = num_mffc - 3;
-      return g; /* accepted resub */
-    }
-#endif
-
-    return std::nullopt;
-  }
-
-  std::optional<signal> resub_div0( node const& root, uint32_t required ) 
-  {
-    (void)required;
-    auto tt = get_tt( root );
-    auto ntt = get_tt( root, true );
-
-    for ( auto i = 0u; i < num_divs; ++i )
-    //for ( int i = num_divs-1; i >= 0; --i )
-    {
-      auto const d = divs.at( i );
-      auto ttd = get_tt( d );
-
-      if ( tt == ttd || ntt == ttd )
-      {
-        auto const g = ( tt == ttd ) ? ntk.make_signal( d ) : !ntk.make_signal( d );
-
-        const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-          return validator.validate( root, g );
-        });
-
-        if ( !valid ) /* timeout */
-        {
-          continue;
-        }
-        else if ( *valid )
-        {
-          return g;
-        }
-        else
-        {
-          ++st.num_cex_div0;
-          found_cex();
-          tt = get_tt( root );
-          ntt = get_tt( root, true );
-        }
-      }
-    }
-
-    return std::nullopt;
-  }
-
-  std::optional<signal> resub_div1( node const& root, uint32_t required )
-  {
-    (void)required;
-    auto tt = get_tt( root );
-    auto const& w = kitty::count_ones_fast( tt );
-    auto const& nw = tt.num_bits() - w;
-
-    /* check for positive unate divisors */
-    for ( auto i = 0u; i < udivs.positive_divisors.size(); ++i )
-    {
-      auto const& s0 = udivs.positive_divisors.at( i ).first;
-      auto tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
-      auto const& w_s0 = udivs.positive_divisors.at( i ).second;
-      if ( w_s0 < uint32_t( w / 2 ) )
-        break;
-
-      for ( auto j = i + 1; j < udivs.positive_divisors.size(); ++j )
-      {
-        if ( w_s0 + udivs.positive_divisors.at( j ).second < w )
-          break;
-
-        auto const& s1 = udivs.positive_divisors.at( j ).first;
-        auto const& tt_s1 = get_tt( ntk.get_node( s1 ), ntk.is_complemented(s1) );
-
-        const auto isor = call_with_stopwatch( st.time_div1_compare, [&]() {
-            return is_or( tt_s0, tt_s1, tt);
-          });
-
-        if ( isor )
-        {
-          fanin fi1{0, !ntk.is_complemented( s0 )};
-          fanin fi2{1, !ntk.is_complemented( s1 )};
-          vgate gate{{fi1, fi2}, gtype::AND};
-
-          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-            return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, true );
-          });
-
-          if ( !valid ) /* timeout */
-          {
-            continue;
-          }
-          else if ( *valid )
-          {
-            return ntk.create_or( s0, s1 );
-          }
-          else
-          {
-            ++st.num_cex_div1;
-            found_cex();
-            tt = get_tt( root );
-            tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
-          }
-        }
-      }
-    }
-
-    /* check for negative unate divisors */
-    for ( auto i = 0u; i < udivs.negative_divisors.size(); ++i )
-    {
-      auto const& s0 = udivs.negative_divisors.at( i ).first;
-      auto tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
-      auto const& w_s0 = udivs.negative_divisors.at( i ).second;
-      if ( w_s0 < uint32_t( nw / 2 ) )
-        break;
-
-      for ( auto j = i + 1; j < udivs.negative_divisors.size(); ++j )
-      {
-        if ( w_s0 + udivs.negative_divisors.at( j ).second < nw )
-          break;
-
-        auto const& s1 = udivs.negative_divisors.at( j ).first;
-        auto const& tt_s1 = get_tt( ntk.get_node( s1 ), ntk.is_complemented(s1) );
-
-        const auto isand = call_with_stopwatch( st.time_div1_compare, [&]() {
-            return is_and( tt_s0, tt_s1, tt);
-          });
-
-        if ( isand )
-        {
-          fanin fi1{0, ntk.is_complemented( s0 )};
-          fanin fi2{1, ntk.is_complemented( s1 )};
-          vgate gate{{fi1, fi2}, gtype::AND};
-
-          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-            return validator.validate( root, {ntk.get_node( s0 ), ntk.get_node( s1 )}, {gate}, false );
-          });
-
-          if ( !valid ) /* timeout */
-          {
-            continue;
-          }
-          else if ( *valid )
-          {
-            return ntk.create_and( s0, s1 );
-          }
-          else
-          {
-            ++st.num_cex_div1;
-            found_cex();
-            tt = get_tt( root );
-            tt_s0 = get_tt( ntk.get_node( s0 ), ntk.is_complemented(s0) );
-          }
-        }
-      }
-    }
-
     return std::nullopt;
   }
 
@@ -950,6 +606,13 @@ private:
   {    
     for ( auto j = 0u; j < ps.num_trials_k; ++j )
     {
+      check_tts( root );
+      for ( auto i = 0u; i < num_divs; ++i )
+      {
+        check_tts( divs[i] );
+      }
+      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+
       abc_resub rs( 2ul + num_divs, tts[root].num_blocks(), ps.max_divisors_k );
       rs.add_root( root, tts );
       rs.add_divisors( std::begin( divs ), std::begin( divs ) + num_divs, tts );
@@ -1064,62 +727,6 @@ private:
     return std::nullopt;
   }
 
-  std::optional<signal> resub_xor( node const& root, uint32_t required ) 
-  {
-    (void)required;
-    auto tt = get_tt( root );
-    auto ntt = get_tt( root, true );
-
-    for ( auto i = 0u; i < num_divs - 1; ++i )
-    {
-      auto const& s0 = divs.at( i );
-      auto tt_s0 = get_tt( s0 );
-
-      for ( auto j = i + 1; j < num_divs; ++j )
-      {
-        auto const& s1 = divs.at( j );
-        auto const& tt_s1 = get_tt( s1 );
-
-        const auto isxor = call_with_stopwatch( st.time_div1_compare, [&]() {
-            return is_xor( tt_s0, tt_s1, tt);
-          });
-        const auto isxnor = call_with_stopwatch( st.time_div1_compare, [&]() {
-            return is_xor( tt_s0, tt_s1, ntt);
-          });
-
-        if ( isxor || isxnor )
-        {
-          fanin fi1{0, false};
-          fanin fi2{1, false};
-          vgate gate{{fi1, fi2}, gtype::XOR};
-
-          const auto valid = call_with_stopwatch( st.time_sat, [&]() {
-            return validator.validate( root, {s0, s1}, {gate}, isxnor );
-          });
-
-          if ( !valid ) /* timeout */
-          {
-            continue;
-          }
-          else if ( *valid )
-          {
-            return isxor ? ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) ) : !ntk.create_xor( ntk.make_signal( s0 ), ntk.make_signal( s1 ) );
-          }
-          else
-          {
-            ++st.num_cex_xor;
-            found_cex();
-            tt = get_tt( root );
-            ntt = get_tt( root, true );
-            tt_s0 = get_tt( s0 );
-          }
-        }
-      }
-    }
-
-    return std::nullopt;
-  }
-
 private:
   NtkBase& ntkbase;
   Ntk& ntk;
@@ -1137,8 +744,6 @@ private:
   partial_simulator& sim;
 
   validator_t validator;
-
-  unate_divisors udivs;
 
   std::vector<node> temp;
   std::vector<node> divs;
@@ -1174,7 +779,7 @@ void sim_resubstitution( Ntk& ntk, partial_simulator& sim, simresub_params const
   resub_view_t resub_view{depth_view};
 
   validator_params vps;
-  vps.odc_levels = ps.odc_levels;
+  //vps.odc_levels = ps.odc_levels;
   vps.conflict_limit = ps.conflict_limit;
   vps.random_seed = ps.random_seed;
 

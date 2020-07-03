@@ -44,17 +44,17 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#cex0+1", "#cexk", "#div0+1", "#divk", "t_resub", "t_sim", "t_SAT", "t_k", "cec" );
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, bool> exp( "sim_resubstitution", "benchmark", "#PI", "size", "gain", "#pat", "#cex", "#divk", "t_patgen", "t_resub", "t_sim", "t_SAT", "t_k", "cec" );
 
   //for ( auto const& benchmark : epfl_benchmarks() )
   for ( auto const& benchmark : iwls_benchmarks() )
   {
-    //if ( benchmark != "div" ) continue;
+    //if ( benchmark != "iwls2005/aes_core" ) continue;
 
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
-    //if ( aig.num_gates() > 50000 ) continue;
+    if ( aig.num_gates() > 50000 ) continue;
 
     simresub_params ps;
     simresub_stats st;
@@ -94,7 +94,7 @@ int main()
     aig = cleanup_dangling( aig );
 
     const auto cec = abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), size0, size0 - aig.num_gates(), num_total_patterns, st.num_cex, st.num_cex_div0 + st.num_cex_div1, st.num_cex_divk, st.num_div0_accepts + st.num_div1_accepts, st.num_divk_accepts, /*to_seconds( st_pat.time_total ),*/ to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_compute_function ), cec );
+    exp( benchmark, aig.num_pis(), size0, size0 - aig.num_gates(), num_total_patterns, st.num_cex, st.num_divk_accepts, to_seconds( st_pat.time_total ), to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), to_seconds( st.time_compute_function ), cec );
   }
 
   exp.save();
