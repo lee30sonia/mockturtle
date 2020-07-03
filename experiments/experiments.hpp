@@ -390,10 +390,8 @@ static const char* benchmarks[] = {
     "adder", "bar", "div", "hyp", "log2", "max", "multiplier", "sin", "sqrt", "square",
     "arbiter", "cavlc", "ctrl", "dec", "i2c", "int2float", "mem_ctrl", "priority", "router", "voter"};
 
-//static const char* iwls05_benchmarks[] = {
-//    "ac97_ctrl", "aes_core", "des_area", "des_perf", "DMA", "DSP", "ethernet", "i2c", "leon2", "leon3_opt", "leon3", "leon3mp", "mem_ctrl", "netcard", "pci_bridge32", "RISC", "sasc", "simple_spi", "spi", "ss_pcm", "systemcaes", "systemcdes", "tv80", "usb_funct", "usb_phy", "vga_lcd", "wb_conmax"};
-static const char* iwls05_benchmarks[] = {
-    "ac97_ctrl", "aes_core", "des_area", "DMA", "i2c", "mem_ctrl", "pci_bridge32", "sasc", "simple_spi", "spi", "ss_pcm", "systemcaes", "systemcdes", "tv80", "usb_funct", "usb_phy"};
+static const char* iwls05_benchmarks[] = {"ac97_ctrl", "aes_core", "des_area", "des_perf", "DMA", "DSP", "ethernet", "i2c", "leon2", "leon3_opt", "leon3", "leon3mp", "mem_ctrl", "netcard", "pci_bridge32", "RISC", "sasc", "simple_spi", "spi", "ss_pcm", "systemcaes", "systemcdes", "tv80", "usb_funct", "usb_phy", "vga_lcd", "wb_conmax"};
+//static const char* iwls05_benchmarks[] = {"ac97_ctrl", "aes_core", "des_area", "DMA", "i2c", "mem_ctrl", "pci_bridge32", "sasc", "simple_spi", "spi", "ss_pcm", "systemcaes", "systemcdes", "tv80", "usb_funct", "usb_phy"};
 
 std::vector<std::string> epfl_benchmarks( uint32_t selection = all )
 {
@@ -411,7 +409,7 @@ std::vector<std::string> epfl_benchmarks( uint32_t selection = all )
 std::vector<std::string> iwls_benchmarks()
 {
   std::vector<std::string> result;
-  for ( uint32_t i = 0u; i < 16u; ++i ) //27
+  for ( uint32_t i = 0u; i < 27u; ++i ) //16, 27
   {
     result.push_back( "iwls2005/" + std::string(iwls05_benchmarks[i]) );
   }

@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2020  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -25,109 +25,88 @@
 
 /*!
   \file pattern_generation.hpp
-  \brief Powerful Simulation Pattern Generation
+  \brief Expressive Simulation Pattern Generation
 
   \author Siang-Yun Lee
 */
 
 #pragma once
 
-#include <random>
-#include <mockturtle/networks/aig.hpp>
 #include "../utils/progress_bar.hpp"
 #include "../utils/stopwatch.hpp"
-#include <mockturtle/algorithms/simulation.hpp>
-#include <mockturtle/algorithms/dont_cares.hpp>
-#include <mockturtle/algorithms/circuit_validator.hpp>
-#include <kitty/partial_truth_table.hpp>
-//#include <kitty/print.hpp>
-#include "cleanup.hpp"
-#include <bill/sat/interface/z3.hpp>
 #include <bill/sat/interface/abc_bsat2.hpp>
+#include <bill/sat/interface/z3.hpp>
+#include <kitty/partial_truth_table.hpp>
+#include <mockturtle/algorithms/circuit_validator.hpp>
+#include <mockturtle/algorithms/dont_cares.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
+#include <mockturtle/networks/aig.hpp>
+#include <random>
 
 namespace mockturtle
 {
 
-struct patgen_params
+struct pattern_generation_params
 {
-  /*! \brief Number of initial random patterns to start with. */
-  uint32_t num_random_pattern{1000};
-
-  /*! \brief Whether to start with patterns in a file. */
-  std::optional<std::string> patfile{};
-
-  /*! \brief Whether to substitute constant nodes. */
+  /*! \brief Whether to remove constant nodes. Requires `substitute_node`. */
   bool substitute_const{true};
 
   /*! \brief Number of patterns each node should have for both values. */
   uint32_t num_stuck_at{1};
 
-  /*! \brief Fanout levels to consider for observability. -1 = no limit. */
-  int odc_levels{-1};
-
-  /*! \brief Whether to check and re-generate type 1 observable patterns. */
-  bool observability_type1{false};
-
-  /*! \brief Whether to check and re-generate type 2 observable patterns. */
-  bool observability_type2{false};
-
-  /*! \brief Whether to apply the distinguishing-node strategy. */
-  bool distinguish_nodes{false};
-
-  /*! \brief Whether to save generated patterns into file. */
-  std::optional<std::string> write_pats{};
+  /*! \brief Whether to consider observability, and how many levels. 0 = no. -1 = Consider TFO until PO. */
+  int odc_levels{0};
 
   /*! \brief Show progress. */
   bool progress{false};
 
-  /*! \brief Be verbose. */
+  /*! \brief Be verbose. Note that it will take more time to do extra ODC computation if this is turned on. */
   bool verbose{false};
 
   /*! \brief Random seed. */
   std::default_random_engine::result_type random_seed{0};
 
+  /*! \brief Conflict limit of the SAT solver. */
   uint32_t conflict_limit{1000};
+
+  /*! \brief Maximum number of clauses of the SAT solver. (incremental CNF construction) */
+  uint32_t max_clauses{1000};
 };
 
-struct patgen_stats
+struct pattern_generation_stats
 {
+  /*! \brief Total time. */
   stopwatch<>::duration time_total{0};
 
-  /*! \brief Time for simulations. */
+  /*! \brief Time for simulation. */
   stopwatch<>::duration time_sim{0};
 
   /*! \brief Time for SAT solving. */
   stopwatch<>::duration time_sat{0};
 
-  /* time for ODC computation */
+  /*! \brief Time for ODC computation */
   stopwatch<>::duration time_odc{0};
 
-  /*! \brief Number of constant nodes found. */
+  /*! \brief Number of constant nodes. */
   uint32_t num_constant{0};
 
-  /*! \brief Number of total generated patterns (including random ones). */
-  uint32_t num_total_patterns{0};
+  /*! \brief Number of generated patterns. */
+  uint32_t num_generated_patterns{0};
 
-  /*! \brief Number of type1 unobservable nodes. */
+  /*! \brief Number of stuck-at patterns that is re-generated because the original one was unobservable. */
   uint32_t unobservable_type1{0};
 
-  /*! \brief Number of resolved type1 unobservable nodes. */
-  uint32_t unobservable_type1_resolved{0};
-
-  /*! \brief Number of type2 unobservable nodes. */
+  /*! \brief Number of additional patterns generated because the node was unobservable with one value. */
   uint32_t unobservable_type2{0};
 
-  /*! \brief Number of resolved type2 unobservable nodes. */
-  uint32_t unobservable_type2_resolved{0};
-
-  /*! \brief Number of div0 distinguishing-node strategy generated patterns. */
-  uint32_t num_div0_pats{0};
+  /*! \brief Number of unobservable nodes (node for which an observable pattern can not be found). */
+  uint32_t unobservable_node{0};
 };
 
 namespace detail
 {
 
-template<class Ntk>
+template<class Ntk, bool use_odc = false>
 class patgen_impl
 {
 public:
@@ -135,20 +114,10 @@ public:
   using signal = typename Ntk::signal;
   using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
 
-  /* without providing filename of random patterns */
-  explicit patgen_impl( Ntk& ntk, patgen_params const& ps, validator_params& vps, patgen_stats& st )
-    : ntk( ntk ), ps( ps ), st( st ), vps( vps ), validator( ntk, vps ),
-      tts( ntk ), sim( ntk.num_pis(), ps.num_random_pattern, ps.random_seed )
+  explicit patgen_impl( Ntk& ntk, partial_simulator& sim, pattern_generation_params const& ps, validator_params& vps, pattern_generation_stats& st )
+      : ntk( ntk ), ps( ps ), st( st ), vps( vps ), validator( ntk, vps ),
+        tts( ntk ), sim( sim )
   {
-    st.num_total_patterns = ps.num_random_pattern;
-  }
-
-  /* provide filename of (fixed) random patterns */
-  explicit patgen_impl( Ntk& ntk, std::string const& patfile, patgen_params const& ps, validator_params& vps, patgen_stats& st )
-    : ntk( ntk ), ps( ps ), st( st ), vps( vps ), validator( ntk, vps ),
-      tts( ntk ), sim( patfile, ps.num_random_pattern )
-  {
-    st.num_total_patterns = ps.num_random_pattern;
   }
 
   void run()
@@ -157,7 +126,7 @@ public:
 
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
-    });
+    } );
 
     if ( ps.num_stuck_at > 0 )
     {
@@ -168,298 +137,232 @@ public:
         for ( auto n : const_nodes )
         {
           if ( !ntk.is_dead( ntk.get_node( n ) ) )
+          {
             ntk.substitute_node( ntk.get_node( n ), ntk.get_constant( ntk.is_complemented( n ) ) );
+          }
         }
       }
     }
 
-    if ( ps.observability_type2 )
+    if constexpr ( use_odc )
     {
       observability_check();
     }
-
-    if ( ps.distinguish_nodes )
-    {
-      //distinguish_div0();
-    }
   }
-
-private:
-
-#if 0
-  void generate_more( node const& n, bool value, std::vector<std::vector<bool>> const& patterns )
-  {
-    solver.bookmark();
-    std::vector<pabc::lit> assumptions( 1 );
-    assumptions[0] = lit_not_cond( literals[n], !value );
-
-    /* add blocking clauses */
-    for ( auto i = 0u; i < patterns.size(); ++i )
-    {
-      auto const& pattern = patterns[i];
-      std::vector<uint32_t> clause;
-      for ( auto j = 0u; j < pattern.size(); ++j )
-        clause.emplace_back( lit_not_cond( make_lit( j + 1 ), pattern[j] ) );
-      solver.add_clause( clause );
-    }
-
-    auto num_generated = patterns.size();
-    while ( num_generated < ps.num_stuck_at )
-    {
-      set_random_polarity();
-      const auto res = call_with_stopwatch( st.time_sat, [&]() {
-        return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
-      });
-      if ( res == percy::synth_result::success )
-      {
-        std::vector<bool> pattern;
-        for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-          pattern.push_back(solver.var_value( j ));
-
-        if ( false ) //( ps.observability_type1 )
-        {
-          /* check if the found pattern is observable */ 
-          bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-              return pattern_is_observable( ntk, n, pattern, ps.observability_levels );
-            });
-          if ( !observable )
-          {
-            //std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
-            ++st.unobservable_type1;
-            if ( generate_observable_pattern( n, value, pattern ) )
-            {
-              ++st.unobservable_type1_resolved;
-              //std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, pattern, ps.observability_levels ) <<"\n";
-            }
-          }
-        }
-
-        sim.add_pattern(pattern);
-        ++st.num_total_patterns;
-        ++num_generated;
-
-        /* add blocking clauses */
-        std::vector<uint32_t> clause;
-        for ( auto j = 0u; j < pattern.size(); ++j )
-          clause.emplace_back( lit_not_cond( make_lit( j + 1 ), pattern[j] ) );
-        solver.add_clause( clause );
-      }
-      else break; /* can not generate more */
-    }
-
-    solver.rollback();
-  }
-#endif
 
 private:
   void stuck_at_check()
   {
     progress_bar pbar{ntk.size(), "patgen-sa |{0}| node = {1:>4} #pat = {2:>4}", ps.progress};
 
-    kitty::partial_truth_table zero = sim.compute_constant(false);
+    kitty::partial_truth_table zero = sim.compute_constant( false );
 
-    ntk.foreach_gate( [&]( auto const& n, auto i ) 
-    {
-      pbar( i, i, st.num_total_patterns );
+    ntk.foreach_gate( [&]( auto const& n, auto i ) {
+      pbar( i, i, sim.num_bits() );
 
-      //std::cout<<"processing node "<<unsigned(n)<<std::endl;
-      if ( (tts[n] == zero) || (tts[n] == ~zero) )
+      if ( tts[n].num_bits() != sim.num_bits() )
       {
-        bool value = (tts[n] == zero); /* wanted value of n */
-      
+        call_with_stopwatch( st.time_sim, [&]() {
+          simulate_node<Ntk>( ntk, n, tts, sim );
+        } );
+      }
+      assert( zero.num_bits() == sim.num_bits() );
+
+      if ( ( tts[n] == zero ) || ( tts[n] == ~zero ) )
+      {
+        bool value = ( tts[n] == zero ); /* wanted value of n */
+
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           vps.odc_levels = 0;
           return validator.validate( n, !value );
-        });
-        if ( !res ) return true; /* timeout, next node */
-        
-        else if ( !(*res) )
+        } );
+        if ( !res )
         {
-          //std::cout << "SAT: add pattern. (" << n << " = " << value <<")" << std::endl;
-          if ( ps.observability_type1 )
+          return true; /* timeout, next node */
+        }
+        else if ( !( *res ) ) /* SAT, pattern found */
+        {
+          if constexpr ( use_odc )
           {
-            /* check if the found pattern is observable */ 
-            bool observable = call_with_stopwatch( st.time_odc, [&]() { 
-                return pattern_is_observable( ntk, n, validator.cex, ps.odc_levels );
-              });
+            /* check if the found pattern is observable */
+            bool observable = call_with_stopwatch( st.time_odc, [&]() {
+              return pattern_is_observable( ntk, n, validator.cex, ps.odc_levels );
+            } );
             if ( !observable )
             {
-              if ( ps.verbose ) std::cout << "generated pattern is not observable! (" << unsigned(n) << " = " << value <<")" << std::endl;
-              ++st.unobservable_type1;
+              if ( ps.verbose )
+              {
+                std::cout << "\t[i] generated pattern is not observable (type 1). node: " << n << ", with value " << value << "\n";
+              }
+
               const auto res2 = call_with_stopwatch( st.time_sat, [&]() {
                 vps.odc_levels = ps.odc_levels;
                 return validator.validate( n, !value );
-              });
+              } );
               if ( res2 )
               {
-                if ( !(*res2) )
+                if ( !( *res2 ) )
                 {
-                  ++st.unobservable_type1_resolved;
-                  if ( ps.verbose ) std::cout << "after re-gen, now?? " << pattern_is_observable( ntk, n, validator.cex, ps.odc_levels ) <<"\n";
+                  ++st.unobservable_type1;
+                  if ( ps.verbose )
+                  {
+                    assert( pattern_is_observable( ntk, n, validator.cex, ps.odc_levels ) );
+                    std::cout << "\t\t[i] unobservable pattern resolved.\n";
+                  }
                 }
                 else
                 {
-                  if ( ps.verbose ) std::cout<<"untestable node "<<n<<"\n";
+                  ++st.unobservable_node;
+                  if ( ps.verbose )
+                  {
+                    std::cout << "\t\t[i] unobservable node " << n << "\n";
+                  }
                 }
               }
             }
           }
 
-          sim.add_pattern(validator.cex);
-          ++st.num_total_patterns;
-#if 0
+          new_pattern( validator.cex );
+
           if ( ps.num_stuck_at > 1 )
           {
-            std::vector<std::vector<bool>> patterns;
-            patterns.emplace_back( pattern );
-            generate_more( n, value, patterns );
+            auto generated = call_with_stopwatch( st.time_sat, [&]() {
+              vps.odc_levels = ps.odc_levels;
+              return validator.generate_pattern( n, value, {validator.cex}, ps.num_stuck_at - 1 );
+            } );
+            for ( auto& pattern : generated )
+            {
+              new_pattern( pattern );
+            }
           }
-#endif
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
-            zero = sim.compute_constant(false);
-          });
+
+          zero = sim.compute_constant( false );
         }
-        else
+        else /* UNSAT, constant node */
         {
-          //std::cout << "UNSAT: this is a constant node. (" << n << ")" << std::endl;
           ++st.num_constant;
           const_nodes.emplace_back( value ? ntk.make_signal( n ) : !ntk.make_signal( n ) );
           return true; /* next gate */
         }
       }
-#if 0
       else if ( ps.num_stuck_at > 1 )
       {
         auto const& tt = tts[n];
         if ( kitty::count_ones( tt ) < ps.num_stuck_at )
         {
-          /* collect the one patterns */
-          std::vector<std::vector<bool>> patterns;
-          for ( auto i = 0u; i < tt.num_bits(); ++i )
-          {
-            if ( kitty::get_bit( tt, i ) )
-            {
-              patterns.emplace_back();
-              ntk.foreach_pi( [&]( auto const& pi ){ 
-                patterns.back().emplace_back( kitty::get_bit( tts[pi], i ) );
-              });
-            }
-          }
-
-          generate_more( n, 1, patterns );
-
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
-            zero = sim.compute_constant(false);
-          });
+          generate_more_patterns( n, tt, true, zero );
         }
         else if ( kitty::count_zeros( tt ) < ps.num_stuck_at )
         {
-          /* collect the zero patterns */
-          std::vector<std::vector<bool>> patterns;
-          for ( auto i = 0u; i < tt.num_bits(); ++i )
-          {
-            if ( !kitty::get_bit( tt, i ) )
-            {
-              patterns.emplace_back();
-              ntk.foreach_pi( [&]( auto const& pi ){ 
-                patterns.back().emplace_back( kitty::get_bit( tts[pi], i ) );
-              });
-            }
-          }
-
-          generate_more( n, 0, patterns );
-
-          /* re-simulate */
-          call_with_stopwatch( st.time_sim, [&]() {
-            simulate_nodes<Ntk>( ntk, tts, sim );
-            zero = sim.compute_constant(false);
-          });
+          generate_more_patterns( n, tt, false, zero );
         }
       }
-#endif
       return true; /* next gate */
     } );
   }
 
   void observability_check()
   {
-    ntk.foreach_gate( [&]( auto const& n ) 
-    {
-      /* compute ODC */
-      auto odc = call_with_stopwatch( st.time_odc, [&]() { 
-          return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels );
-        });
+    progress_bar pbar{ntk.size(), "patgen-obs |{0}| node = {1:>4} #pat = {2:>4}", ps.progress};
 
-      /* check if under non-ODCs n is always the same value */ 
-      if ( ( tts[n] & ~odc ) == sim.compute_constant( false ) )
+    kitty::partial_truth_table zero = sim.compute_constant( false );
+
+    ntk.foreach_gate( [&]( auto const& n, auto i ) {
+      pbar( i, i, sim.num_bits() );
+
+      for ( auto& f : const_nodes )
       {
-        if ( ps.verbose ) std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 0!" << std::endl;
-        ++st.unobservable_type2;
+        if ( ntk.get_node( f ) == n )
+        {
+          return true; /* skip constant nodes */
+        }
+      }
+
+      if ( tts[n].num_bits() != sim.num_bits() )
+      {
+        call_with_stopwatch( st.time_sim, [&]() {
+          simulate_node<Ntk>( ntk, n, tts, sim );
+        } );
+      }
+      assert( zero.num_bits() == sim.num_bits() );
+
+      /* compute ODC */
+      auto odc = call_with_stopwatch( st.time_odc, [&]() {
+        return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels );
+      } );
+
+      /* check if under non-ODCs n is always the same value */
+      if ( ( tts[n] & ~odc ) == zero )
+      {
+        if ( ps.verbose )
+        {
+          std::cout << "\t[i] under all observable patterns, node " << n << " is always 0 (type 2).\n";
+        }
 
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           vps.odc_levels = ps.odc_levels;
           return validator.validate( n, false );
-        });
+        } );
         if ( res )
         {
-          if ( !(*res) )
+          if ( !( *res ) )
           {
-            sim.add_pattern(validator.cex);
-            ++st.num_total_patterns;
-            ++st.unobservable_type2_resolved;
+            new_pattern( validator.cex );
+            ++st.unobservable_type2;
 
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-            });
-
-            if ( ps.verbose ) 
+            if ( ps.verbose )
             {
-              auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels ); });
-              std::cout<<"adding generated pattern, now? "<<( ( tts[n] & ~odc2 ) != sim.compute_constant( false ) )<<"\n";
+              auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels ); } );
+              assert( ( tts[n] & ~odc2 ) != sim.compute_constant( false ) );
+              std::cout << "\t\t[i] added generated pattern to resolve unobservability.\n";
             }
+
+            zero = sim.compute_constant( false );
           }
           else
           {
-            if ( ps.verbose ) std::cout<<"untestable node "<<n<<"\n";
+            ++st.unobservable_node;
+            if ( ps.verbose )
+            {
+              std::cout << "\t\t[i] unobservable node " << n << "\n";
+            }
           }
         }
       }
-      else if ( ( tts[n] | odc ) == sim.compute_constant( true ) )
+      else if ( ( tts[n] | odc ) == ~zero )
       {
-        if ( ps.verbose ) std::cout << "under all observable patterns node "<< unsigned(n)<<" is always 1!" << std::endl;
-        ++st.unobservable_type2;
+        if ( ps.verbose )
+        {
+          std::cout << "\t[i] under all observable patterns, node " << n << " is always 1 (type 2).\n";
+        }
 
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
           vps.odc_levels = ps.odc_levels;
           return validator.validate( n, true );
-        });
+        } );
         if ( res )
         {
-          if ( !(*res) )
+          if ( !( *res ) )
           {
-            sim.add_pattern(validator.cex);
-            ++st.num_total_patterns;
-            ++st.unobservable_type2_resolved;
+            new_pattern( validator.cex );
+            ++st.unobservable_type2;
 
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-            });
-
-            if ( ps.verbose ) 
+            if ( ps.verbose )
             {
-              auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels ); });
-              std::cout<<"adding generated pattern, now? "<<( ( tts[n] | odc2 ) != sim.compute_constant( true ) )<<"\n";
+              auto odc2 = call_with_stopwatch( st.time_odc, [&]() { return observability_dont_cares<Ntk>( ntk, n, sim, tts, ps.odc_levels ); } );
+              assert( ( tts[n] | odc2 ) != sim.compute_constant( true ) );
+              std::cout << "\t\t[i] added generated pattern to resolve unobservability.\n";
             }
+
+            zero = sim.compute_constant( false );
           }
           else
           {
-            if ( ps.verbose ) std::cout<<"untestable node "<<n<<"\n";
+            ++st.unobservable_node;
+            if ( ps.verbose )
+            {
+              std::cout << "\t\t[i] unobservable node " << n << "\n";
+            }
           }
         }
       }
@@ -468,128 +371,112 @@ private:
     } );
   }
 
-#if 0
-  void distinguish_div0()
+private:
+  void new_pattern( std::vector<bool> const& pattern )
   {
-    ntk.foreach_gate( [&]( auto const& root ) 
+    sim.add_pattern( pattern );
+    ++st.num_generated_patterns;
+
+    /* re-simulate */
+    if ( sim.num_bits() % 64 == 0 )
     {
-      ntk.foreach_gate( [&]( auto const& n ) 
-      {
-        if ( n <= root ) return true; /* only compare to 'later' nodes */
-
-        if ( tts[root] == tts[n] || ~tts[root] == tts[n] )
-        {
-          auto nlit = new_lit();
-          solver.add_clause( {literals[root], literals[n], nlit} );
-          solver.add_clause( {literals[root], lit_not( literals[n] ), lit_not( nlit )} );
-          solver.add_clause( {lit_not( literals[root] ), literals[n], lit_not( nlit )} );
-          solver.add_clause( {lit_not( literals[root] ), lit_not( literals[n] ), nlit} );
-          std::vector<pabc::lit> assumptions( 1, lit_not_cond( nlit, tts[root] == tts[n] ) );
-        
-          const auto res = call_with_stopwatch( st.time_sat, [&]() {
-            return solver.solve( &assumptions[0], &assumptions[0] + 1, ps.conflict_limit );
-          });
-          
-          if ( res == percy::synth_result::success )
-          {
-            std::vector<bool> pattern;
-            for ( auto j = 1u; j <= ntk.num_pis(); ++j )
-              pattern.push_back(solver.var_value( j ));
-
-            sim.add_pattern(pattern);
-            ++st.num_total_patterns;
-            ++st.num_div0_pats;
-            /* re-simulate */
-            call_with_stopwatch( st.time_sim, [&]() {
-              simulate_nodes<Ntk>( ntk, tts, sim );
-            });
-          }
-        }
-
-        return true; /* next */
-      });
-      return true; /* next */
-    });
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_nodes<Ntk>( ntk, tts, sim, false );
+      } );
+    }
   }
-#endif
+
+  void generate_more_patterns( node const& n, kitty::partial_truth_table const& tt, bool value, kitty::partial_truth_table& zero )
+  {
+    /* collect the `value` patterns */
+    std::vector<std::vector<bool>> patterns;
+    for ( auto i = 0u; i < tt.num_bits(); ++i )
+    {
+      if ( kitty::get_bit( tt, i ) == value )
+      {
+        patterns.emplace_back();
+        ntk.foreach_pi( [&]( auto const& pi ) {
+          patterns.back().emplace_back( kitty::get_bit( tts[pi], i ) );
+        } );
+      }
+    }
+
+    auto generated = call_with_stopwatch( st.time_sat, [&]() {
+      vps.odc_levels = ps.odc_levels;
+      return validator.generate_pattern( n, value, patterns, ps.num_stuck_at - patterns.size() );
+    } );
+    for ( auto& pattern : generated )
+    {
+      new_pattern( pattern );
+    }
+    zero = sim.compute_constant( false );
+  }
 
 private:
   Ntk& ntk;
 
-  patgen_params const& ps;
-  patgen_stats& st;
+  pattern_generation_params const& ps;
+  pattern_generation_stats& st;
 
   validator_params& vps;
-  circuit_validator<Ntk, bill::solvers::bsat2, true, true, true> validator;
-  
+  circuit_validator<Ntk, bill::solvers::bsat2, true, true, use_odc> validator;
+
   TT tts;
   std::vector<signal> const_nodes;
 
-public:
-  partial_simulator sim;
+  partial_simulator& sim;
 };
 
 } /* namespace detail */
 
+/*! \brief Expressive simulation pattern generation.
+ *
+ * This function implements two simulation pattern generation methods:
+ * stuck-at value checking and observability checking. Please refer to
+ * [1] for details of the algorithm and its purpose.
+ *
+ * [1] Simulation-Guided Boolean Resubstitution. IWLS 2020 / ICCAD 2020.
+ *
+ * \param sim Reference of a `partial_simulator` object where the generated 
+ * patterns will be stored. It can be empty (`partial_simulator( ntk.num_pis(), 0 )`)
+ * or already containing some patterns generated from previous runs 
+ * (`partial_simulator( filename )`) or randomly generated
+ * (`partial_simulator( ntk.num_pis(), num_random_patterns )`). The generated
+ * patterns can then be written out with `sim.write_patterns( filename )`
+ * or directly be used by passing the simulator to another algorithm.
+ */
 template<class Ntk>
-partial_simulator pattern_generation( Ntk& ntk, patgen_params const& ps = {}, patgen_stats* pst = nullptr )
+void pattern_generation( Ntk& ntk, partial_simulator& sim, pattern_generation_params const& ps = {}, pattern_generation_stats* pst = nullptr )
 {
-  /* TODO: check if basetype of ntk is aig */
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
-  static_assert( has_clear_values_v<Ntk>, "Ntk does not implement the clear_values method" );
-  static_assert( has_fanout_size_v<Ntk>, "Ntk does not implement the fanout_size method" );
-  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
   static_assert( has_foreach_gate_v<Ntk>, "Ntk does not implement the foreach_gate method" );
-  static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
-  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
   static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
-  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
   static_assert( has_make_signal_v<Ntk>, "Ntk does not implement the make_signal method" );
-  static_assert( has_set_value_v<Ntk>, "Ntk does not implement the set_value method" );
-  static_assert( has_set_visited_v<Ntk>, "Ntk does not implement the set_visited method" );
-  static_assert( has_size_v<Ntk>, "Ntk does not implement the has_size method" );
-  static_assert( has_substitute_node_v<Ntk>, "Ntk does not implement the has substitute_node method" );
-  static_assert( has_value_v<Ntk>, "Ntk does not implement the has_value method" );
-  static_assert( has_visited_v<Ntk>, "Ntk does not implement the has_visited method" );
 
-  patgen_stats st;
-
-  fanout_view<Ntk> fanout_view{ntk};
+  pattern_generation_stats st;
   validator_params vps;
-  vps.odc_levels = ps.odc_levels;
   vps.conflict_limit = ps.conflict_limit;
+  vps.max_clauses = ps.max_clauses;
   vps.random_seed = ps.random_seed;
 
-  if ( ps.patfile )
+  if ( ps.odc_levels != 0 )
   {
-    detail::patgen_impl p( fanout_view, *(ps.patfile), ps, vps, st );
+    using fanout_view_t = fanout_view<Ntk>;
+    fanout_view_t fanout_view{ntk};
+
+    detail::patgen_impl<fanout_view_t, true> p( fanout_view, sim, ps, vps, st );
     p.run();
-
-    if ( ps.write_pats )
-    {
-      p.sim.write_patterns( *(ps.write_pats) );
-    }
-
-    if ( pst )
-      *pst = st;
-
-    return p.sim;
   }
   else
   {
-    detail::patgen_impl p( fanout_view, ps, vps, st );
+    detail::patgen_impl p( ntk, sim, ps, vps, st );
     p.run();
+  }
 
-    if ( ps.write_pats )
-    {
-      p.sim.write_patterns( *(ps.write_pats) );
-    }
-
-    if ( pst )
-      *pst = st;
-
-    return p.sim;
+  if ( pst )
+  {
+    *pst = st;
   }
 }
 

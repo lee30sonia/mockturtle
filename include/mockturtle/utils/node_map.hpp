@@ -241,7 +241,9 @@ public:
   void erase( node const& n )
   {
     if ( has( n ) )
+    {
       data->erase( ntk.node_to_index( n ) );
+    }
   }
 
   /* Make a deep copy */

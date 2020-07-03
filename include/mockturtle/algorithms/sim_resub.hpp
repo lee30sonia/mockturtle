@@ -350,9 +350,8 @@ public:
     
     ntk._events->on_add.emplace_back( update_level_of_new_node );
     ntk._events->on_add.emplace_back( [&]( const auto& n ){
-      (void)n;
       call_with_stopwatch( st.time_sim, [&]() {
-        simulate_nodes<Ntk>( ntk, tts, sim );
+        simulate_node<Ntk>( ntk, n, tts, sim );
       });
     });
     
@@ -368,6 +367,7 @@ public:
     /* start the managers */
     progress_bar pbar{ntk.size(), "resub |{0}| node = {1:>4}   cand = {2:>4}   est. gain = {3:>5}", ps.progress};
 
+    /* first simulation: the whole circuit; from 0 bits. */
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
@@ -387,10 +387,6 @@ public:
           ntk.substitute_node( n, ntk.get_constant( false ) );
         else if ( tts[n] == one )
           ntk.substitute_node( n, ntk.get_constant( true ) );
-      });
-
-      call_with_stopwatch( st.time_sim, [&]() {
-        simulate_nodes<Ntk>( ntk, tts, sim );
       });
     }
 
@@ -633,20 +629,27 @@ private:
   {
     ++st.num_cex;
     sim.add_pattern( validator.cex );
-
-    /* re-simulate */
-    call_with_stopwatch( st.time_sim, [&]() {
-      simulate_nodes<Ntk>( ntk, tts, sim );
-    });
-
-    if ( ps.max_inserts > 1u )
+    
+    /* re-simulate the whole circuit (for the last block) when a block is full */
+    if ( sim.num_bits() % 64 == 0 )
     {
-      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_nodes<Ntk>( ntk, tts, sim, false );
+      });
     }
+
+    abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
   }
 
   kitty::partial_truth_table get_tt( node const& n, bool inverse = false )
   {
+    if ( tts[n].num_bits() != sim.num_bits() )
+    {
+      call_with_stopwatch( st.time_sim, [&]() {
+        simulate_node<Ntk>( ntk, n, tts, sim );
+      });
+    }
+
     if ( ps.odc_levels == 0 )
       return inverse? ~tts[n]: tts[n];
 

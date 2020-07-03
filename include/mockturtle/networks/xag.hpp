@@ -1084,6 +1084,7 @@ public:
     }
   }
 
+  /*! \brief Re-compute the last block. */
   template<typename Iterator>
   void compute( node const& n, kitty::partial_truth_table& result, Iterator begin, Iterator end ) const
   {
@@ -1100,31 +1101,18 @@ public:
 
     assert( tt1.num_bits() == tt2.num_bits() );
     assert( tt1.num_bits() >= result.num_bits() );
-    if ( result.num_bits() == 0 )
+    assert( result.num_blocks() == tt1.num_blocks() || ( result.num_blocks() == tt1.num_blocks() - 1 && result.num_bits() % 64 == 0 ) );
+
+    result.resize( tt1.num_bits() );
+    if ( c1.index < c2.index )
     {
-      if ( c1.index < c2.index )
-      {
-        result = ( c1.weight ? ~tt1 : tt1 ) & ( c2.weight ? ~tt2 : tt2 );
-      }
-      else
-      {
-        result = ( c1.weight ? ~tt1 : tt1 ) ^ ( c2.weight ? ~tt2 : tt2 );
-      }
+      result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) & ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
     }
     else
     {
-      result.resize( tt1.num_bits() );
-      if ( c1.index < c2.index )
-      {
-        result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) & ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
-        result.mask_bits();
-      }
-      else
-      {
-        result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) ^ ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
-        result.mask_bits();
-      }
+      result._bits.back() = ( c1.weight ? ~(tt1._bits.back()) : tt1._bits.back() ) ^ ( c2.weight ? ~(tt2._bits.back()) : tt2._bits.back() );
     }
+    result.mask_bits();
   }
 #pragma endregion
 

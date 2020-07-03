@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2020  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -28,8 +28,8 @@
 
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
+#include <mockturtle/algorithms/simulation.hpp>
 #include <mockturtle/algorithms/pattern_generation.hpp>
-//#include <mockturtle/algorithms/pattern_generation_cnfview.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
@@ -43,34 +43,25 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, bool> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT", "cec" );
 
-  //for ( auto const& benchmark : epfl_benchmarks( ~hyp & ~mem_ctrl & ~experiments::log2 & ~experiments::div & ~experiments::sqrt & ~multiplier ) )
-  for ( auto const& benchmark : iwls_benchmarks() )
+  for ( auto const& benchmark : epfl_benchmarks() )
   {
-    //if ( benchmark != "iwls2005/mem_ctrl" ) continue;
-
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
     auto size_before = aig.num_gates();
 
-    patgen_params ps;
-    patgen_stats st;
+    pattern_generation_params ps;
+    pattern_generation_stats st;
 
-    ps.num_random_pattern = 256;
-    ps.observability_type1 = true;
-    ps.observability_type2 = true;
-    ps.odc_levels = 5;
-    ps.write_pats = "256sa1obs/" + benchmark + ".pat";
-    //ps.patfile = "test.pat";
-    ps.random_seed = 1689;
-    ps.progress = false;
-    ps.verbose = true;
+    uint32_t num_random_pattern = 1000;
 
-    pattern_generation( aig, ps, &st );
+    partial_simulator sim( aig.num_pis(), num_random_pattern );
+
+    pattern_generation( aig, sim, ps, &st );
     aig = cleanup_dangling( aig );
 
     const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
-    exp( benchmark, aig.num_pis(), size_before, st.num_total_patterns, st.num_total_patterns - ps.num_random_pattern, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
+    exp( benchmark, aig.num_pis(), size_before, sim.num_bits(), st.num_generated_patterns, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ), cec );
   }
 
   exp.save();
