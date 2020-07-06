@@ -101,8 +101,8 @@ struct simresub_stats
   /* time for SAT solving */
   stopwatch<>::duration time_sat{0};
 
-  /* time for finding substitutions */
-  stopwatch<>::duration time_eval{0};
+  /* time for computing reconvergence-driven cut */
+  stopwatch<>::duration time_cut{0};
 
   /* time for MFFC computation */
   stopwatch<>::duration time_mffc{0};
@@ -113,17 +113,15 @@ struct simresub_stats
   /* time for executing the user-specified callback when candidates found */
   stopwatch<>::duration time_callback{0};
 
-  /* time & number of k-resub */
-  stopwatch<>::duration time_resubk{0};
+  /* time for finding dependency function */
   stopwatch<>::duration time_compute_function{0};
-  uint32_t num_divk_accepts{0};
 
   /*! \brief Initial network size (before resubstitution) */
   uint64_t initial_size{0};
 
   uint32_t num_cex{0};
 
-  uint32_t num_cex_divk{0};
+  uint32_t num_resub{0};
 
   /*! \brief Total number of gain  */
   uint64_t estimated_gain{0};
@@ -325,7 +323,9 @@ public:
       simulate_nodes<Ntk>( ntk, tts, sim );
     });
 
-    abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+    call_with_stopwatch( st.time_compute_function, [&]() {
+      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+    });
 
     /* iterate through all nodes and try to replace it */
     auto const size = ntk.num_gates();
@@ -341,12 +341,12 @@ public:
 
         /* use all the PIs as the cut */
         cut_manager<Ntk> mgr( ps.max_pis );
-        auto const leaves = reconv_driven_cut( mgr, ntk, n );
+        auto const leaves = call_with_stopwatch( st.time_cut, [&]() {
+            return reconv_driven_cut( mgr, ntk, n );
+          });
         
         /* evaluate this cut */
-        auto const g = call_with_stopwatch( st.time_eval, [&]() {
-            return evaluate( n, leaves );
-          });
+        auto const g = evaluate( n, leaves );
         if ( !g ) return true; /* next */
         
         /* update progress bar */
@@ -362,7 +362,9 @@ public:
         return true; /* next */
       });
 
-    abcresub::Abc_ResubPrepareManager( 0 );
+    call_with_stopwatch( st.time_compute_function, [&]() {
+      abcresub::Abc_ResubPrepareManager( 0 );
+    });
   }
 
 private:
@@ -530,7 +532,9 @@ private:
         simulate_nodes<Ntk>( ntk, tts, sim, false );
       });
 
-      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+      call_with_stopwatch( st.time_compute_function, [&]() {
+        abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+      });
     }
   }
 
@@ -572,12 +576,10 @@ private:
 
     /* try k-resub */
     uint32_t size = 0;
-    auto g = call_with_stopwatch( st.time_resubk, [&]() {
-        return resub_divk( root, std::min( num_mffc - 1, int( ps.max_inserts ) ), size );
-      } );
+    auto g = resub_divk( root, std::min( num_mffc - 1, int( ps.max_inserts ) ), size );
     if ( g )
     {
-      ++st.num_divk_accepts;
+      ++st.num_resub;
       last_gain = num_mffc - size;
       return g; /* accepted resub */
     }
@@ -594,18 +596,20 @@ private:
       {
         check_tts( divs[i] );
       }
-      abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
-
-      abc_resub rs( 2ul + num_divs, tts[root].num_blocks(), ps.max_divisors_k );
-      rs.add_root( root, tts );
-      rs.add_divisors( std::begin( divs ), std::begin( divs ) + num_divs, tts );
 
       auto const res = call_with_stopwatch( st.time_compute_function, [&]() {
+        abcresub::Abc_ResubPrepareManager( sim.compute_constant( false ).num_blocks() );
+
+        abc_resub rs( 2ul + num_divs, tts[root].num_blocks(), ps.max_divisors_k );
+        rs.add_root( root, tts );
+        rs.add_divisors( std::begin( divs ), std::begin( divs ) + num_divs, tts );
+
         if constexpr ( std::is_same<NtkBase, xag_network>::value )
           return rs.compute_function( num_inserts, true );
         else
           return rs.compute_function( num_inserts, false );
       });
+
       if ( res )
       {
         auto const& index_list = *res;
@@ -631,7 +635,6 @@ private:
             }
             else
             {
-              ++st.num_cex_divk;
               found_cex();
               continue;
             }
@@ -653,12 +656,7 @@ private:
             size += ( gates[i].type == gtype::AND )? 1u: 3u;
         }
         bool const out_neg = bool( index_list.back() % 2 );
-
-        if ( size > num_inserts )
-        {
-          std::cout<<"circuit size exceed limit\n";
-          return std::nullopt;
-        }
+        assert( size <= num_inserts );
 
         const auto valid = call_with_stopwatch( st.time_sat, [&]() {
           return validator.validate( root, std::begin( divs ), std::begin( divs ) + num_divs, gates, out_neg );
@@ -696,7 +694,6 @@ private:
           }
           else
           {
-            ++st.num_cex_divk;
             found_cex();
           }
         }
