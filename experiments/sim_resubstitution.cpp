@@ -65,7 +65,6 @@ int main()
     ps.max_divisors_k = 50u;
     ps.num_trials_k = 100u;
     ps.progress = true;
-    ps.check_const = true;
 
     bool useExternal = false;
     //ps.write_pats = "patCEX/" + benchmark + ".pat";
