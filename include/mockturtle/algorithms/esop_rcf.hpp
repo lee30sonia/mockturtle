@@ -42,6 +42,7 @@
 
 #include <bill/dd/zdd.hpp>
 #include <fmt/format.h>
+#include "cudd_wrapper.hpp"
 
 #include "../traits.hpp"
 #include "../utils/stopwatch.hpp"
@@ -57,6 +58,17 @@ struct esop_synthesis_params
 
 namespace detail
 {
+#define CUDD 1
+#if CUDD
+  using zdd_node_t = ZDD; // uint32_t
+  using zdd_mgr_t = cudd::cudd_zdd; // bill::zdd_base
+  #define PRINT(zdd, zid) zdd.print( zid, "", 1 );
+#else
+  using zdd_node_t = uint32_t;
+  using zdd_mgr_t = bill::zdd_base;
+  #define PRINT(zdd, zid) zdd.print_sets( zid );
+#endif
+
 /* a `g_var` object is 2^r covering variables in the RCF, all corresponding to a cube `x1` on X1 PIs
    assignment to the 2^r covering variables (corresponding to different value combinations of X2 PIs) decides the cost of a `g_var`
    hence data member `x2` stores the current assignment to the 2^r covering variables of this `g_var` */
@@ -195,19 +207,19 @@ struct xor_constraint
     : vids( vids ), offset( offset ), even( even )
   {}
 
-  uint32_t zdd_node( bill::zdd_base& zdd, uint32_t const& block_size )
+  zdd_node_t zdd_node( zdd_mgr_t& zdd, uint32_t const& block_size )
   {
     //std::cout<<"building ZDD for: "; print( block_size );
 
-    uint32_t every = zdd.bottom();
+    auto every = zdd.bottom();
     for ( auto& vid : vids )
     {
       every = zdd.union_( every, zdd.elementary( vid * block_size + offset ) );
     }
-    uint32_t rest = zdd.nonsupersets( zdd.tautology(), every );
+    auto rest = zdd.nonsupersets( zdd.tautology(), every );
 
     uint32_t k = even ? 0 : 1;
-    uint32_t zid = zdd.bottom();
+    auto zid = zdd.bottom();
     while ( k <= vids.size() )
     {
       zid = zdd.union_( zid, zdd.choose( every, k ) );
@@ -215,7 +227,6 @@ struct xor_constraint
     }
     zid = zdd.join( zid, rest );
 
-    //zdd.print_sets( zid );
     return zid;
   }
 
@@ -434,17 +445,18 @@ private: /* ZDD */
   void build_ZDD()
   {
     stopwatch<>::duration time_U(0);
-    uint32_t zid = call_with_stopwatch( time_U, [&]() {
+    auto zid = call_with_stopwatch( time_U, [&]() {
       return upper_bound();
     });
     std::cout<<"upper bound function built in " << to_seconds(time_U) << " sec.\n";
+
     for ( auto& c : RCF ) 
     { 
-      zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) ); 
+      zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) );
     }
     std::cout<<"constraints built\n";
-    //zdd.print_sets( zid );
-    zdd.foreach_set( zid, [&]( auto const& set ){
+    PRINT(zdd, zid)
+    /*zdd.foreach_set( zid, [&]( auto const& set ){
       //std::cout << fmt::format("{{ {} }}", fmt::join(set, ", "));
       for ( auto& v : vars )
       {
@@ -466,10 +478,10 @@ private: /* ZDD */
       }
       //std::cout << " -- " << get_cost() << ( valid() ? " (valid)" : " (invalid!!)" ) << "\n";
       return true;
-    });
+    });*/
   }
 
-  uint32_t upper_bound()
+  zdd_node_t upper_bound()
   {
     if ( ps.best == INT_MAX )
     {
@@ -480,10 +492,13 @@ private: /* ZDD */
     {
       for ( auto v = 0u; v < vars.size() - 1; ++v )
       {
-        uint32_t zid = zdd.top();
+        auto zid = zdd.top();
         for ( int i = block_size - 1; i >= 0; --i )
         {
-          zdd.ref( zid, 2 );
+          #if CUDD 
+          #else
+          zdd.ref( zid, 2 ); // NOTE: This line is only needed when using bill.
+          #endif
           zid = zdd.unique( v * block_size + i, zid, zid );
         }
         tautologies.push_back( zid );
@@ -496,13 +511,13 @@ private: /* ZDD */
     return upper_bound_rec( vars.size() - 1, m, ps.best );
   }
 
-  uint32_t upper_bound_rec( uint32_t v, uint32_t const& m, uint32_t k )
+  zdd_node_t upper_bound_rec( uint32_t v, uint32_t const& m, uint32_t k )
   {
     if ( v == 0 )
     {
       return upper_bound_single( 0, k );
     }
-    uint32_t zid = zdd.bottom();
+    auto zid = zdd.bottom();
     for ( auto i = 0u; i <= m; ++i )
     {
       if ( k < i ) break;
@@ -511,30 +526,32 @@ private: /* ZDD */
     return zid;
   }
 
-  uint32_t upper_bound_single( uint32_t v, uint32_t k )
+  zdd_node_t upper_bound_single( uint32_t v, uint32_t k )
   {
-    uint32_t zid;
-    uint32_t b = v * block_size;
     switch( r )
     {
       case 0u: // ~g0 = {{}}, 1 = {{}, {g0}}
-        return ( k == 0u ) ? zdd.top() : zdd.union_( zdd.top(), zdd.elementary( v ) );
+        { return ( k == 0u ) ? zdd.top() : zdd.union_( zdd.top(), zdd.elementary( v ) ); }
       case 1u: // ~g0 & ~g1 = {{}}, 1 = {{}, {g0}, {g1}, {g0, g1}}
-        return ( k == 0u ) ? zdd.top() : tautologies.at( v );
+        { return ( k == 0u ) ? zdd.top() : tautologies.at( v ); }
       case 2u:
+      {
         if ( k == 0u ) return zdd.top();
         else if ( k >= 2u ) return tautologies.at( v );
         else // k == 1u
         {
-          zid = zdd.join( zdd.elementary( b + 1 ), zdd.elementary( b + 2 ) ); // {g1, g2}
+          uint32_t b = v * block_size;
+          auto zid = zdd.join( zdd.elementary( b + 1 ), zdd.elementary( b + 2 ) ); // {g1, g2}
           zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 1 ) ), zdd.elementary( b + 2 ) ) ); // {g0, g1, g2}
           zid = zdd.union_( zid, zdd.join( zdd.elementary( b ), zdd.elementary( b + 3 ) ) ); // {g0, g3}
           zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 1 ) ), zdd.elementary( b + 3 ) ) ); // {g0, g1, g3}
           zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b ), zdd.elementary( b + 2 ) ), zdd.elementary( b + 3 ) ) ); // {g0, g2, g3}
           zid = zdd.union_( zid, zdd.join( zdd.join( zdd.elementary( b + 1 ), zdd.elementary( b + 2 ) ), zdd.elementary( b + 3 ) ) ); // {g1, g2, g3}
-          return zdd.difference( tautologies.at( v ), zid );
+          zid = zdd.difference( tautologies.at( v ), zid );
+          return zid;
         }
-      default: assert( false ); return 0u;
+      }
+      default: { assert( false ); return zdd.bottom(); }
     }
   }
 
@@ -756,8 +773,8 @@ private:
   uint32_t const block_size; // == 2^r
   uint32_t n_r; // (n - r) of current subproblem
 
-  bill::zdd_base zdd;
-  std::vector<uint32_t> tautologies; /* tautology ZDD nodes for each g_var */
+  zdd_mgr_t zdd;
+  std::vector<zdd_node_t> tautologies; /* tautology ZDD nodes for each g_var */
 
   std::vector<uint32_t> costs;
   uint32_t best; /* cost of the best solution so far */

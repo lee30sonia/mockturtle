@@ -5,6 +5,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <array>
+#include <utility>
 
 namespace cudd {
 
@@ -25,6 +26,7 @@ public:
       tautologies.emplace_back( cudd.zddOne( i ) );
     }
     assert( cudd.ReadZddSize() == int( num_variables ) );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
     //cudd.makeVerbose();
   }
 
@@ -42,27 +44,31 @@ public:
   ZDD ref( ZDD const& node )
   {
     Cudd_Ref( node.getNode() );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
     return node;
   }
 
   void deref_rec( ZDD const& node )
   {
     Cudd_RecursiveDerefZdd( cudd.getManager(), node.getNode() );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
   }
 
   /* only decrease ref count of `node` but not recursively on its children */
   void deref( ZDD const& node )
   {
-    Cudd_Deref( node.getNode() );
+    deref( node.getNode() );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
   }
 
   /* Create a node at level `var`, whose "then" child points to `T` and "else" child points to `E`,
    * or return the node if it already exists.
-   * The result ZDD object is pass by copy, hence ref count is incresed by the copy constructor.s
+   * The result ZDD object is pass by copy, hence ref count is incresed by the copy constructor.
    * 
    * `T` and `E` should be lower than `var` (larger indices are lower)
+   * Note the order of `T` and `E` is the same as in `bill`, but different from CUDD.
    */
-  ZDD create( uint32_t var, ZDD const& T, ZDD const& E )
+  ZDD unique( uint32_t var, ZDD const& E, ZDD const& T )
   {
     assert( T.NodeReadIndex() > var && E.NodeReadIndex() > var );
     return ZDD( cudd, cuddZddGetNode( cudd.getManager(), var, T.getNode(), E.getNode() ) );
@@ -104,7 +110,7 @@ public: /* operations provided by CUDD */
   /* union every pair of subsets in f and g */
   ZDD join( ZDD const& f, ZDD const& g )
   {
-    assert( f.NodeReadIndex() < num_variables && g.NodeReadIndex() < num_variables );
+    assert( ( f == empty || f == base || f.NodeReadIndex() < num_variables) && ( g == empty || g == base || g.NodeReadIndex() < num_variables ) );
     return ZDD( cudd, deref( join( f.getNode(), g.getNode() ) ) );
   }
 
@@ -112,13 +118,13 @@ public: /* operations provided by CUDD */
   /* \forall A \in result, A \in f and \forall B \in g, A \notsuperset B */
   ZDD nonsupersets( ZDD const& f, ZDD const& g )
   {
-    assert( f.NodeReadIndex() < num_variables && g.NodeReadIndex() < num_variables );
+    assert( ( f == empty || f == base || f.NodeReadIndex() < num_variables) && ( g == empty || g == base || g.NodeReadIndex() < num_variables ) );
     return ZDD( cudd, deref( nonsupersets( f.getNode(), g.getNode() ) ) );
   }
 
   ZDD choose( ZDD const& f, uint32_t k )
   {
-    assert( f.NodeReadIndex() < num_variables );
+    assert( f == empty || f == base || f.NodeReadIndex() < num_variables );
     return ZDD( cudd, deref( choose( f.getNode(), k ) ) );
   }
 
@@ -131,9 +137,29 @@ private: /* implementation details */
   DdNode* lo( DdNode* f ) { return cuddE( f ); }
   DdNode* hi( DdNode* f ) { return cuddT( f ); }
   DdNode* ref( DdNode* node ) { Cudd_Ref( node ); return node; }
-  DdNode* deref( DdNode* node ) { Cudd_Deref( node ); return node; }
+  DdNode* deref( DdNode* node )
+  {
+    Cudd_Deref( node );
+    return node;
+    //cuddSatDec( node->ref );
+    //if ( node->ref == 0 )
+    //{
+    //  DdManager * table = cudd.getManager();
+    //  table->deadZ++;
+    //  #ifdef DD_STATS
+    //    table->nodesDropped++;
+    //  #endif
+    //  #ifdef DD_DEBUG
+    //    assert(!cuddIsConstant(node));
+    //  #endif
+    //  int ord = table->permZ[node->index];
+    //  table->subtableZ[ord].dead++;
+    //  if (!cuddIsConstant(cuddT(node))) Cudd_RecursiveDerefZdd(table, cuddT(node));
+    //  if (!cuddIsConstant(cuddE(node))) Cudd_RecursiveDerefZdd(table, cuddE(node));
+    //}
+    //return node; 
+  }
 
-  /* note the order is the same as in `bill` but different than `create` */
   DdNode* unique( uint32_t var, DdNode* lo, DdNode* hi )
   { return ref( cuddZddGetNode( cudd.getManager(), var, hi, lo ) ); }
 
@@ -146,14 +172,37 @@ private: /* implementation details */
   DdNode* difference( DdNode* f, DdNode* g )
   { return ref( Cudd_zddDiff( cudd.getManager(), f, g ) ); }
 
+#if 0
+  DdNode* join_( DdManager * mgr, DdNode* f, DdNode* g ) { (void)mgr; return join( f, g ); }
+  DdNode* nonsupersets_( DdManager * mgr, DdNode* f, DdNode* g ) { (void)mgr; return nonsupersets( f, g ); }
+  DdNode* choose_( DdManager * mgr, DdNode* f, DdNode* g ) { (void)mgr; return choose( f, (uint64_t)g ); }
+#else
+  uint64_t join_ = 2;
+  uint64_t nonsupersets_ = 4;
+  uint64_t choose_ = 6;
+#endif
+
   DdNode* join( DdNode* f, DdNode* g )
   {
+    //std::cout<<"[i] compute join\n";
     /* terminal cases */
     DdNode* e = empty.getNode();
     DdNode* b = base.getNode();
     if ( f == e || g == e ) { return ref( e ); }
     if ( f == b ) { return ref( g ); }
     if ( g == b ) { return ref( f ); }
+
+    /* cache lookup */
+    //constexpr operations op = operations::zdd_join;
+    //const auto it = computed_tables.at( op ).find( operand_t( f, g ) );
+    //if ( it != computed_tables.at( op ).end() )
+    //{
+    //  if ( it->second->ref == 0 )
+    //    { std::cout<<"    reclaim\n"; cuddReclaimZdd( cudd.getManager(), it->second ); }
+    //  return ref( it->second );
+    //}
+    auto res = cache_lookup( cudd.getManager(), join_, f, g );
+    if ( res != NULL ) { return ref( res ); }
 
     uint32_t var = std::min( Cudd_NodeReadIndex( f ), Cudd_NodeReadIndex( g ) );
     DdNode* lo = 0;
@@ -180,11 +229,16 @@ private: /* implementation details */
     }
     auto r = unique( var, lo, hi );
     deref( lo ); deref( hi );
+    
+    //computed_tables.at( op )[operand_t( f, g )] = r;
+    cache_insert( cudd.getManager(), join_, f, g, r );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
     return r;
   }
 
   DdNode* nonsupersets( DdNode* f, DdNode* g )
   {
+    //std::cout<<"[i] compute nonsupersets\n";
     /* terminal cases */
     DdNode* e = empty.getNode();
     DdNode* b = base.getNode();
@@ -195,14 +249,16 @@ private: /* implementation details */
       { return nonsupersets( f, cuddE( g ) ); }
 
     /* cache lookup */
-    /*constexpr operations op = operations::zdd_nonsupersets;
-    const auto it = computed_tables.at( op ).find( hash( f, g ) );
-    if ( it != computed_tables.at( op ).end() )
-    {
-      if ( it->second->ref == 0 )
-        { cuddReclaimZdd( cudd.getManager(), it->second ); }
-      return ref( it->second );
-    }*/
+    //constexpr operations op = operations::zdd_nonsupersets;
+    //const auto it = computed_tables.at( op ).find( operand_t( f, g ) );
+    //if ( it != computed_tables.at( op ).end() )
+    //{
+    //  if ( it->second->ref == 0 )
+    //    { std::cout<<"    reclaim\n"; cuddReclaimZdd( cudd.getManager(), it->second ); }
+    //  return ref( it->second );
+    //}
+    auto res = cache_lookup( cudd.getManager(), nonsupersets_, f, g );
+    if ( res != NULL ) { return ref( res ); }
 
     /* recursive computation */
     DdNode* lo = 0;
@@ -222,17 +278,33 @@ private: /* implementation details */
     }
     auto r = unique( Cudd_NodeReadIndex( f ), lo, hi );
     deref( lo ); deref( hi );
-    //computed_tables.at( op )[hash( f, g )] = r;
+    
+    //computed_tables.at( op )[operand_t( f, g )] = r;
+    cache_insert( cudd.getManager(), nonsupersets_, f, g, r );
+    assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
     return r;
   }
 
-  DdNode* choose( DdNode* f, uint32_t k )
+  DdNode* choose( DdNode* f, uint64_t k )
   {
+    //std::cout<<"[i] compute choose\n";
     if ( Cudd_NodeReadIndex( f ) >= num_variables )
     {
       return ref( k > 0 ? empty.getNode() : base.getNode() );
     }
     if ( k == 1 ) { return ref( f ); }
+
+    /* cache lookup */
+    //constexpr operations op = operations::zdd_choose;
+    //const auto it = computed_tables.at( op ).find( operand_t( f, (DdNode*)k ) );
+    //if ( it != computed_tables.at( op ).end() )
+    //{
+    //  if ( it->second->ref == 0 )
+    //    { std::cout<<"    reclaim\n"; cuddReclaimZdd( cudd.getManager(), it->second ); }
+    //  return ref( it->second );
+    //}
+    auto res = cache_lookup( cudd.getManager(), choose_ + k * 2, f, f );
+    if ( res != NULL ) { return ref( res ); }
 
     DdNode* n = choose( cuddE( f ), k ); /* don't take this var */
     if ( k > 0 )
@@ -240,16 +312,23 @@ private: /* implementation details */
       DdNode* tmp = choose( cuddE( f ), k - 1 ); /* take this var */
       auto r = unique( Cudd_NodeReadIndex( f ), n, tmp );
       deref( n ); deref( tmp );
+      //computed_tables.at( op )[operand_t( f, (DdNode*)k )] = r;
+      cache_insert( cudd.getManager(), choose_ + k * 2, f, f, r );
+      assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
       return r;
     }
     else /* k == 0 */
     {
+      //computed_tables.at( op )[operand_t( f, (DdNode*)k )] = n;
+      cache_insert( cudd.getManager(), choose_ + k * 2, f, f, n );
+      assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
       return n;
     }
   }
 
-#if 0
 private: /* operation cache */
+
+#if 0 /* use our own cache */
   enum operations : uint32_t 
   {
     zdd_choose,
@@ -265,7 +344,81 @@ private: /* operation cache */
     num_operations
   };
   using operand_t = std::pair<DdNode*, DdNode*>;
-  std::array<std::unordered_map<operand_t, DdNode*>, operations::num_operations> computed_tables;
+  struct op_hash
+  {
+    std::size_t operator() ( operand_t const& ops ) const
+    {
+      return (std::size_t)ops.first + (std::size_t)ops.second;
+    }
+  };
+  std::array<std::unordered_map<operand_t, DdNode*, op_hash>, operations::num_operations> computed_tables;
+
+#else /* use CUDD's cache */
+  DdNode * cache_lookup(
+  DdManager * table,
+  uint64_t op,
+  DdNode * f,
+  DdNode * g)
+  {
+    int posn;
+    DdCache *en,*cache;
+    DdNode *data;
+
+    cache = table->cache;
+  #ifdef DD_DEBUG
+    if (cache == NULL) {
+      return(NULL);
+    }
+  #endif
+
+    posn = ddCHash2(op,f,g,table->cacheShift);
+    en = &cache[posn];
+    if (en->data != NULL && en->f==f && en->g==g && en->h==(ptruint)op) {
+      data = Cudd_Regular(en->data);
+      table->cacheHits++;
+      if (data->ref == 0) {
+        cuddReclaimZdd(table,data);
+      }
+      return(en->data);
+    }
+
+    /* Cache miss: decide whether to resize. */
+    table->cacheMisses++;
+
+    if (table->cacheSlack >= 0 && table->cacheHits > table->cacheMisses * table->minHit) {
+      cuddCacheResize(table);
+    }
+
+    return(NULL);
+  }
+
+  void cache_insert(
+  DdManager * table,
+  uint64_t op,
+  DdNode * f,
+  DdNode * g,
+  DdNode * data)
+  {
+    int posn;
+    DdCache *entry;
+
+    posn = ddCHash2(op,f,g,table->cacheShift);
+    entry = &table->cache[posn];
+
+    if (entry->data != NULL) {
+      table->cachecollisions++;
+    }
+    table->cacheinserts++;
+
+    entry->f = f;
+    entry->g = g;
+    entry->h = (ptruint) op;
+    entry->data = data;
+  #ifdef DD_CACHE_PROFILE
+    entry->count++;
+  #endif
+  } 
+
 #endif
 
 private:
