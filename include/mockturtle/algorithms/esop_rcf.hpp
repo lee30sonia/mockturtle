@@ -216,7 +216,11 @@ struct xor_constraint
     {
       every = zdd.union_( every, zdd.elementary( vid * block_size + offset ) );
     }
+    #if CUDD
+    auto rest = zdd.dont_care( vids );
+    #else
     auto rest = zdd.nonsupersets( zdd.tautology(), every );
+    #endif
 
     uint32_t k = even ? 0 : 1;
     auto zid = zdd.bottom();
@@ -449,7 +453,8 @@ private: /* ZDD */
       return upper_bound();
     });
     std::cout<<"upper bound function built in " << to_seconds(time_U) << " sec.\n";
-
+    PRINT(zdd, zid)
+    
     for ( auto& c : RCF ) 
     { 
       zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) );

@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2020  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -36,14 +36,15 @@ int main()
 {
   using namespace mockturtle;
 
-  kitty::dynamic_truth_table tt( 4u );
-  kitty::create_from_hex_string( tt, "1039" );
+  kitty::dynamic_truth_table tt( 8u );
+  kitty::create_random( tt );
+  //kitty::create_from_hex_string( tt, "1039" );
   //kitty::dynamic_truth_table tt( 6u );
   //kitty::create_from_hex_string( tt, "688c802028222222" );
 
   esop_synthesis_params ps;
   ps.r = 2u;
-  //ps.best = 7u;
+  ps.best = 3u;
   stopwatch<>::duration runtime(0);
 
   call_with_stopwatch( runtime, [&]() {
