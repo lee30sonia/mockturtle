@@ -141,18 +141,19 @@ public: /* operations not provided by CUDD */
   {
     //std::cout<<"[i] care computation\n";
     assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
-    DdNode* n = base.getNode();
+    DdNode* n1 = base.getNode();
+    DdNode* n2 = 0;
 
     for ( auto i : vec )
     {
       assert( i < num_variables );
-      //if ( n != base.getNode() ) { deref( n ); }
-      n = unique( i, n, n ); ref( n );
-      assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
+      n2 = unique( i, n1, n1 ); ref( n2 );
+      if ( n1 != base.getNode() ) { Cudd_Deref( n1 ); }
+      n1 = n2;
     }
 
-    auto r = ZDD( cudd, n );
-    //deref( n );
+    Cudd_Deref( n2 );
+    auto r = ZDD( cudd, n2 );
     assert( Cudd_DebugCheck( cudd.getManager() ) == 0 );
     return r;
   }
@@ -302,7 +303,7 @@ private: /* implementation details */
 
   DdNode* nonsupersets( DdNode* f, DdNode* g )
   {
-    std::cout<<"[i] compute nonsupersets\n";
+    //std::cout<<"[i] compute nonsupersets\n";
     /* terminal cases */
     DdNode* e = empty.getNode();
     DdNode* b = base.getNode();
