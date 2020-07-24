@@ -401,7 +401,6 @@ Cudd_Deref(
 {
     node = Cudd_Regular(node);
     cuddSatDec(node->ref);
-    assert(node->ref != 0);
 } /* end of Cudd_Deref */
 
 
