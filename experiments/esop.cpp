@@ -36,9 +36,9 @@ int main()
 {
   using namespace mockturtle;
 
-  kitty::dynamic_truth_table tt( 8u );
-  kitty::create_random( tt );
-  //kitty::create_from_hex_string( tt, "1039" );
+  kitty::dynamic_truth_table tt( 4u );
+  //kitty::create_random( tt );
+  kitty::create_from_hex_string( tt, "1039" );
   //kitty::dynamic_truth_table tt( 6u );
   //kitty::create_from_hex_string( tt, "688c802028222222" );
 
@@ -53,9 +53,7 @@ int main()
   });
   std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
 
-  return 0;
-
-
+#if 0
   for ( auto i = 0u; i < (1<<16); ++i )
   {
     tt._bits[0] = i;
@@ -67,6 +65,6 @@ int main()
     std::cout << "ESOP of cost " << esop.size() << " found.\n";
   }
   std::cout << "runtime: " << to_seconds( runtime ) << " sec.\n";
-  
+#endif  
   return 0;
 }

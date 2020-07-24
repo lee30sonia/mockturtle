@@ -114,10 +114,10 @@ struct g_var
           case 3u: return std::vector<kitty::cube>( {x1} );
           
           case 1u: 
-            c.add_literal( n-r, false );
+            c.add_literal( 0, false );
             return std::vector<kitty::cube>( {c} );
           case 2u: 
-            c.add_literal( n-r, true );
+            c.add_literal( 0, true );
             return std::vector<kitty::cube>( {c} );
           default:
             assert( false );
@@ -130,57 +130,57 @@ struct g_var
           case 15u: return std::vector<kitty::cube>( {x1} );
           
           case 1u: // !x!y
-            c.add_literal( n-r, false );
-            c.add_literal( n-r+1, false );
+            c.add_literal( 1, false );
+            c.add_literal( 0, false );
             return std::vector<kitty::cube>( {c} );
           case 2u: // !xy
-            c.add_literal( n-r, false );
-            c.add_literal( n-r+1, true );
+            c.add_literal( 1, false );
+            c.add_literal( 0, true );
             return std::vector<kitty::cube>( {c} );
           case 3u: // !x
-            c.add_literal( n-r, false );
+            c.add_literal( 1, false );
             return std::vector<kitty::cube>( {c} );
           case 4u: // x!y
-            c.add_literal( n-r, true );
-            c.add_literal( n-r+1, false );
+            c.add_literal( 1, true );
+            c.add_literal( 0, false );
             return std::vector<kitty::cube>( {c} );
           case 5u: // !y
-            c.add_literal( n-r+1, false );
+            c.add_literal( 0, false );
             return std::vector<kitty::cube>( {c} );
           case 8u: // xy
-            c.add_literal( n-r, true );
-            c.add_literal( n-r+1, true );
+            c.add_literal( 1, true );
+            c.add_literal( 0, true );
             return std::vector<kitty::cube>( {c} );
           case 10u: // y
-            c.add_literal( n-r+1, true );
+            c.add_literal( 0, true );
             return std::vector<kitty::cube>( {c} );
           case 12u: // x
-            c.add_literal( n-r, true );
+            c.add_literal( 1, true );
             return std::vector<kitty::cube>( {c} );
 
           case 6u: // x^y = x ^ y
-            c.add_literal( n-r, true );
-            c2.add_literal( n-r+1, true );
+            c.add_literal( 1, true );
+            c2.add_literal( 0, true );
             return std::vector<kitty::cube>( {c, c2} );
           case 7u: // !x+!y = 1 ^ xy
-            c2.add_literal( n-r, true );
-            c2.add_literal( n-r+1, true );
+            c2.add_literal( 1, true );
+            c2.add_literal( 0, true );
             return std::vector<kitty::cube>( {c, c2} );
           case 9u: // x^!y = x ^ !y
-            c.add_literal( n-r, true );
-            c2.add_literal( n-r+1, false );
+            c.add_literal( 1, true );
+            c2.add_literal( 0, false );
             return std::vector<kitty::cube>( {c, c2} );
           case 11u: // !x+y = 1 ^ x!y
-            c2.add_literal( n-r, true );
-            c2.add_literal( n-r+1, false );
+            c2.add_literal( 1, true );
+            c2.add_literal( 0, false );
             return std::vector<kitty::cube>( {c, c2} );
           case 13u: // x+!y = 1 ^ !xy
-            c2.add_literal( n-r, false );
-            c2.add_literal( n-r+1, true );
+            c2.add_literal( 1, false );
+            c2.add_literal( 0, true );
             return std::vector<kitty::cube>( {c, c2} );
           case 14u: // x+y = 1 ^ !x!y
-            c2.add_literal( n-r, false );
-            c2.add_literal( n-r+1, false );
+            c2.add_literal( 1, false );
+            c2.add_literal( 0, false );
             return std::vector<kitty::cube>( {c, c2} );
           default:
             assert( false );
@@ -217,9 +217,14 @@ struct xor_constraint
       every = zdd.union_( every, zdd.elementary( vid * block_size + offset ) );
     }
     #if CUDD
-    auto rest = zdd.dont_care( vids );
+      std::vector<uint32_t> vec;
+      for ( auto& vid : vids )
+      {
+        vec.emplace_back( vid * block_size + offset );
+      }
+      auto rest = zdd.dont_care( vec );
     #else
-    auto rest = zdd.nonsupersets( zdd.tautology(), every );
+      auto rest = zdd.nonsupersets( zdd.tautology(), every );
     #endif
 
     uint32_t k = even ? 0 : 1;
@@ -238,7 +243,7 @@ struct xor_constraint
   {
     for ( auto& vid : vids )
     {
-      std::cout << vid * block_size + offset << " ^ ";
+      std::cout << vid * block_size + offset << " (" << vid << ")" << " ^ ";
     }
     std::cout << "\b\b= " << !even << "\n";
   }
@@ -357,25 +362,32 @@ public:
     }
   }
 
-  std::vector<kitty::cube> run()
+  std::optional<std::vector<kitty::cube>> run()
   {
     create_covering_variables();
     construct_RCF();
-    //write_maxixor();
     solve_RCF();
 
-    std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
-    //for ( auto& esop : esops )
-    //{
-    //  for ( auto& c : esop )
-    //  {
-    //    c.print( n );
-    //    std::cout << " ";
-    //  }
-    //  std::cout << "\n";
-    //}
+    if ( esops.size() > 0 )
+    {
+      std::cout << esops.size() << " min ESOPs of cost " << best << " found.\n";
+      for ( auto& esop : esops )
+      {
+        for ( auto& c : esop )
+        {
+          c.print( n );
+          std::cout << " ";
+        }
+        std::cout << "\n";
+      }
 
-    return std::vector<kitty::cube>();//esops[0];
+      return esops[0];
+    }
+    else
+    {
+      std::cout << "No ESOP with cost <= " << ps.best << " found.\n";
+      return std::nullopt;
+    }
   }
 
 private:
@@ -392,7 +404,7 @@ private:
         {
           continue;
         }
-        vars.emplace_back( n, r, kitty::cube( bits1, mask1 ) );
+        vars.emplace_back( n, r, kitty::cube( bits1 << r, mask1 << r ) );
       }
     }
     std::reverse( vars.begin(), vars.end() );
@@ -406,7 +418,7 @@ private:
       std::vector<uint32_t> v;
       for ( auto vid = 0u; vid < vars.size(); ++vid )
       {
-        if ( contain( vars[vid].x1, i ) )
+        if ( contain( vars[vid].x1, i << r ) )
         {
           v.emplace_back( vid );
         }
@@ -453,16 +465,16 @@ private: /* ZDD */
       return upper_bound();
     });
     std::cout<<"upper bound function built in " << to_seconds(time_U) << " sec.\n";
-    PRINT(zdd, zid)
-    
+    //PRINT(zdd, zid)
+
     for ( auto& c : RCF ) 
     { 
       zid = zdd.intersection( zid, c.zdd_node( zdd, block_size ) );
     }
     std::cout<<"constraints built\n";
     PRINT(zdd, zid)
-    /*zdd.foreach_set( zid, [&]( auto const& set ){
-      //std::cout << fmt::format("{{ {} }}", fmt::join(set, ", "));
+    zdd.foreach_set( zid, [&]( auto const& set ){
+      std::cout << fmt::format("{{ {} }}", fmt::join(set, ", "));
       for ( auto& v : vars )
       {
         v.reset_x2();
@@ -483,7 +495,7 @@ private: /* ZDD */
       }
       //std::cout << " -- " << get_cost() << ( valid() ? " (valid)" : " (invalid!!)" ) << "\n";
       return true;
-    });*/
+    });
   }
 
   zdd_node_t upper_bound()
@@ -791,7 +803,7 @@ private:
 
 /*! \brief Performs ESOP exact synthesis
  */
-std::vector<kitty::cube> esop_synthesis( kitty::dynamic_truth_table const& func, esop_synthesis_params const& ps = {} )
+std::optional<std::vector<kitty::cube>> esop_synthesis( kitty::dynamic_truth_table const& func, esop_synthesis_params const& ps = {} )
 {
   detail::esop_synthesis_impl p( func, ps );
   return p.run();
