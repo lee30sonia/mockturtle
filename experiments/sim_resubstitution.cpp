@@ -42,7 +42,7 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, float, bool> exp( "sim_resubstitution", "benchmark", "size", "gain", "runtime", "equivalent" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iwls_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
@@ -51,14 +51,18 @@ int main()
     resubstitution_params ps;
     resubstitution_stats st;
 
-    //ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
+    ps.pattern_filename = "256sa1obs/" + benchmark + ".pat";
+    ps.save_patterns = "cex/" + benchmark + ".pat";
+    ps.max_pis = 10;
+    ps.max_divisors = 150;
     ps.max_inserts = 1;
+    ps.progress = true;
 
     const uint32_t size_before = aig.num_gates();
     sim_resubstitution( aig, ps, &st );
     aig = cleanup_dangling( aig );
 
-    const auto cec = benchmark == "hyp" ? true : abc_cec( aig, benchmark );
+    const auto cec = size_before > 100000 ? true : abc_cec( aig, benchmark );
 
     exp( benchmark, size_before, size_before - aig.num_gates(), to_seconds( st.time_total ), cec );
   }
