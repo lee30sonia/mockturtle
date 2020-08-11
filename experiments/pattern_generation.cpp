@@ -32,6 +32,7 @@
 #include <mockturtle/algorithms/pattern_generation.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/write_patterns.hpp>
 #include <mockturtle/networks/aig.hpp>
 
 #include <experiments.hpp>
@@ -43,8 +44,9 @@ int main()
 
   experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float> exp( "pattern_generation", "benchmark", "#PI", "size", "#pat", "#pat gen", "#const", "t_total", "t_sim", "t_SAT" );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iwls_benchmarks() )
   {
+    if ( benchmark.substr(0,4)=="leon" || benchmark=="netcard" ) continue;
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -53,9 +55,14 @@ int main()
     pattern_generation_params ps;
     pattern_generation_stats st;
 
-    uint32_t num_random_pattern = 1000;
+    ps.progress = true;
+    ps.num_stuck_at = 1;
+    ps.odc_levels = 5;
+
+    uint32_t num_random_pattern = 256;
     bit_packed_simulator sim( aig.num_pis(), num_random_pattern );
     pattern_generation( aig, sim, ps, &st );
+    write_patterns( sim, "256sa1obs/" + benchmark + ".pat" );
 
     exp( benchmark, aig.num_pis(), size_before, sim.num_bits(), st.num_generated_patterns, st.num_constant, to_seconds( st.time_total ), to_seconds( st.time_sim ), to_seconds( st.time_sat ) );
   }
