@@ -44,6 +44,7 @@ int main()
 
   for ( auto const& benchmark : iwls_benchmarks() )
   {
+    if (!(benchmark.substr(0,4)=="leon" || benchmark=="netcard")) continue;
     fmt::print( "[i] processing {}\n", benchmark );
     aig_network aig;
     lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
@@ -51,14 +52,19 @@ int main()
     resubstitution_params ps;
     resubstitution_stats st;
 
-    ps.pattern_filename = "256sa1obs/" + benchmark + ".pat";
+    ps.pattern_filename = "cex/" + benchmark + ".pat";
+    //ps.pattern_filename = "256sa1obs1/" + benchmark + ".pat";
     ps.save_patterns = "cex/" + benchmark + ".pat";
-    ps.max_pis = 10;
-    ps.max_divisors = 150;
-    ps.max_inserts = 1;
-    ps.progress = true;
+    ps.max_pis = 100;
+    ps.max_divisors = 2000;
+    ps.max_inserts = 20;
+    ps.verbose = true;
 
     const uint32_t size_before = aig.num_gates();
+    sim_resubstitution( aig, ps, &st );
+    aig = cleanup_dangling( aig );
+    sim_resubstitution( aig, ps, &st );
+    aig = cleanup_dangling( aig );
     sim_resubstitution( aig, ps, &st );
     aig = cleanup_dangling( aig );
 

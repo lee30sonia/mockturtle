@@ -143,5 +143,45 @@
       }
     ],
     "version": "df695e1"
+  },
+  {
+    "entries": [
+      {
+        "benchmark": "leon2",
+        "equivalent": true,
+        "gain": 5560,
+        "runtime": 3569.87353515625,
+        "size": 787972
+      },
+      {
+        "benchmark": "leon3_opt",
+        "equivalent": true,
+        "gain": 10085,
+        "runtime": 2890.1669921875,
+        "size": 972957
+      },
+      {
+        "benchmark": "leon3",
+        "equivalent": true,
+        "gain": 8247,
+        "runtime": 3682.905029296875,
+        "size": 1085729
+      },
+      {
+        "benchmark": "leon3mp",
+        "equivalent": true,
+        "gain": 4132,
+        "runtime": 1183.959228515625,
+        "size": 650722
+      },
+      {
+        "benchmark": "netcard",
+        "equivalent": true,
+        "gain": 6286,
+        "runtime": 5583.16015625,
+        "size": 803848
+      }
+    ],
+    "version": "12d2c87"
   }
 ]
